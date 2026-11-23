@@ -64,7 +64,7 @@ async function startCity(works) {
   const book = createBook(stage, { works, plans, billboardTex: screenTex, billboardWideTex: wideTex, pictures: { games: KOWLOON }, reducedMotion });
   const billboard = createBillboard(works);
   const selection = createSelection(billboard, { navigate: url => { location.href = url; } });
-  const hub = { stage, book, billboard, selection, plans, screenTex, wideTex, ready: false, selected: null };
+  const hub = { stage, book, billboard, selection, plans, works, screenTex, wideTex, ready: false, selected: null, videoReady: false };
   window.__hub = hub;
 
   // 品質：最初の60フレームが重ければ下げる
@@ -78,13 +78,55 @@ async function startCity(works) {
     hub.selected = st.mode === 'ticker' ? null : st.workId;
     if (st.text !== lastText) { lastText = st.text; scroll = 0; updatePlayButton(st); }
     scroll += dt * 26;
-    if (!hub.videoActive) {
-      const color = st.mode === 'wip' ? '#ffd400' : '#ff9a1f';
-      if (book.current === 'games') { drawDots(bw, st.text, scroll * 1.6, { dir: 'h', cols: 48, rows: 48, color }); wideTex.needsUpdate = true; }
-      else { drawDots(bc, st.text, scroll, { color }); screenTex.needsUpdate = true; }
-    }
+    const color = st.mode === 'wip' ? '#ffd400' : '#ff9a1f';
+    const wide = book.current === 'games';
+    const cv = wide ? bw : bc;
+    const media = st.mode === 'cm' ? mediaFor(st) : null;
+    if (media) {
+      // CM：動画か画面写真を映し、下にドット文字の帯
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
+      const mw = media.videoWidth || media.naturalWidth, mh = media.videoHeight || media.naturalHeight;
+      const band = wide ? cv.height * 0.22 : cv.height * 0.12;
+      const k = Math.max(cv.width / mw, (cv.height - band) / mh) * (media.tagName === 'IMG' ? 1 + 0.08 * Math.sin(book.time * 0.4) : 1);
+      const pan = media.tagName === 'IMG' ? Math.sin(book.time * 0.25) * 0.5 + 0.5 : 0.5;
+      ctx.drawImage(media, (cv.width - mw * k) * pan, (cv.height - band - mh * k) / 2, mw * k, mh * k);
+      const strip = stripCanvas(cv.width, band);
+      drawDots(strip, st.text, scroll * 1.6, { dir: 'h', cols: Math.round(cv.width / 5), rows: Math.round(band / 5), color });
+      ctx.drawImage(strip, 0, cv.height - band);
+    } else if (wide) drawDots(bw, st.text, scroll * 1.6, { dir: 'h', cols: 48, rows: 48, color });
+    else drawDots(bc, st.text, scroll, { color });
+    (wide ? wideTex : screenTex).needsUpdate = true;
     if (book.district) animateDistrict(book.district, book.time, dt, hub.selected);
   });
+
+  // CM：動画は選ばれた時だけ読む。失敗したら文字表示へ
+  const videos = new Map(), shots = new Map(), strips = {};
+  const stripCanvas = (w, h) => { const key = w + 'x' + h; if (!strips[key]) { const c = document.createElement('canvas'); c.width = w; c.height = Math.max(8, Math.round(h)); strips[key] = c; } return strips[key]; };
+  function mediaFor(st) {
+    if (st.video) {
+      let v = videos.get(st.video);
+      if (!v) {
+        v = document.createElement('video');
+        Object.assign(v, { muted: true, loop: true, playsInline: true, preload: 'auto', crossOrigin: 'anonymous' });
+        v.setAttribute('playsinline', '');
+        v.addEventListener('error', () => billboard.videoFailed(st.workId));
+        v.src = st.video;
+        v.play().catch(() => billboard.videoFailed(st.workId));
+        videos.set(st.video, v);
+      }
+      for (const [src, o] of videos) if (src !== st.video && !o.paused) o.pause();
+      if (v.paused && !v.error) v.play().catch(() => {});
+      if (v.readyState >= 2) { hub.videoReady = true; return v; }
+    }
+    if (st.shot) {
+      let im = shots.get(st.shot);
+      if (!im) { im = new Image(); im.src = st.shot; shots.set(st.shot, im); }
+      if (im.complete && im.naturalWidth) return im;
+    }
+    return null;
+  }
+  for (const v of videos.values()) v.pause();
 
   // 看板の操作
   const el = stage.renderer.domElement;

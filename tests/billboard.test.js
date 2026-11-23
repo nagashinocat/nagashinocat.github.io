@@ -20,7 +20,7 @@ test('4秒で次の作品', () => {
 });
 test('cmありは動画つき', () => {
   const b = createBillboard(W); b.preview('a');
-  assert.deepEqual(b.state(), { mode: 'cm', workId: 'a', video: 'assets/cm/a.mp4', text: 'エー ＊ あ' });
+  assert.deepEqual(b.state(), { mode: 'cm', workId: 'a', video: 'assets/cm/a.mp4', shot: null, text: 'エー ＊ あ' });
   assert.equal(b.playUrl(), '/a/');
 });
 test('cmなし作品はタイトル＋一言', () => {
@@ -44,3 +44,7 @@ test('clear後0.8秒でticker', () => {
   b.tick(0.4); assert.equal(b.state().mode, 'ticker');
 });
 test('作品0件でも落ちない', () => { const b = createBillboard([]); b.tick(5); assert.equal(b.state().mode, 'ticker'); b.preview('zz'); assert.equal(b.state().mode, 'ticker'); });
+test('画面写真があれば shot を返す', () => {
+  const b = createBillboard([{ id: 's', title: 'S', district: 'games', url: '/s/', blurb: '', shot: 'assets/shots/s.jpg' }]);
+  b.preview('s'); assert.equal(b.state().shot, 'assets/shots/s.jpg'); assert.equal(b.state().video, null);
+});

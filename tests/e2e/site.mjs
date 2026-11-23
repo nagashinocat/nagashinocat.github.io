@@ -98,6 +98,24 @@ async function runSite(ctx) {
     });
     await page.close();
   }
+  // CM動画が読めない → 文字表示に戻る
+  {
+    const { page } = await openPage(ctx, '/', { width: 1280, height: 800 });
+    await page.route('**/assets/cm/**', r => r.fulfill({ status: 404, body: '' }));
+    await page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 60000 });
+    await check('CM動画が読めないと文字表示に戻る', async () => {
+      const id = await page.evaluate(() => window.__hub.works.find(w => w.cm)?.id);
+      assert(id, 'cm のある作品がない');
+      await page.evaluate(id => window.__hub.billboard.preview(id), id);
+      await page.waitForFunction(() => window.__hub.billboard.state().video === null, null, { timeout: 10000 });
+    });
+    await check('CM動画が読めれば掲示板に映る', async () => {
+      await page.unroute('**/assets/cm/**');
+      const ok = await page.evaluate(() => window.__hub.videoReady !== undefined);
+      assert(ok, 'videoReady がない');
+    });
+    await page.close();
+  }
   // WebGL なし → 一覧が本体
   {
     const b = await chromium.launch({ args: ['--disable-webgl', '--disable-3d-apis'] });

@@ -16,7 +16,7 @@ export function createBillboard(works) {
   const show = w => {
     if (!isPlayable(w)) return { mode: 'wip', workId: w.id, text: `工事中 ＊ ${w.title}` };
     const video = w.cm && !failed.has(w.id) ? w.cm : null;
-    return { mode: 'cm', workId: w.id, video, text: w.blurb ? `${w.title} ＊ ${w.blurb}` : w.title };
+    return { mode: 'cm', workId: w.id, video, shot: w.shot || null, text: w.blurb ? `${w.title} ＊ ${w.blurb}` : w.title };
   };
 
   return {
