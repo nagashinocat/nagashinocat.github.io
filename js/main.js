@@ -55,15 +55,13 @@ async function startCity(works) {
   const strong = (navigator.hardwareConcurrency || 4) >= 6 && !coarse;
   stage.setTier(strong ? 'high' : 'low');
 
-  // 掲示板の画面
-  const bc = document.createElement('canvas'); bc.width = 180; bc.height = 640;
-  const screenTex = new THREE.CanvasTexture(bc); screenTex.colorSpace = THREE.SRGBColorSpace;
-  const bw = document.createElement('canvas'); bw.width = 320; bw.height = 320;
-  const wideTex = new THREE.CanvasTexture(bw); wideTex.colorSpace = THREE.SRGBColorSpace;
-  const book = createBook(stage, { works, plans, billboardTex: screenTex, billboardWideTex: wideTex, reducedMotion });
+  // 掲示板の画面（ページごとに形が違う）
+  const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return { c, tex: t }; };
+  const screens = { games: mk(320, 320), tools: mk(480, 300), wip: mk(480, 270) };
+  const book = createBook(stage, { works, plans, screens, reducedMotion });
   const billboard = createBillboard(works);
   const selection = createSelection(billboard, { navigate: url => { location.href = url; } });
-  const hub = { stage, book, billboard, selection, plans, works, screenTex, wideTex, ready: false, selected: null, videoReady: false };
+  const hub = { stage, book, billboard, selection, plans, works, screens, ready: false, selected: null, videoReady: false };
   window.__hub = hub;
 
   // 品質：最初の60フレームが重ければ下げる
@@ -77,25 +75,24 @@ async function startCity(works) {
     hub.selected = st.mode === 'ticker' ? null : st.workId;
     if (st.text !== lastText) { lastText = st.text; scroll = 0; updatePlayButton(st); }
     scroll += dt * 26;
-    const color = st.mode === 'wip' ? '#ffd400' : '#ff9a1f';
-    const wide = book.current === 'games';
-    const cv = wide ? bw : bc;
+    const color = st.mode === 'wip' ? '#ffd400' : book.current === 'tools' ? '#7fe6ff' : '#ff9a1f';
+    const { c: cv, tex: ct } = screens[book.current];
     const media = st.mode === 'cm' ? mediaFor(st) : null;
+    const band = cv.height * 0.22;
+    const dots = (target, h) => drawDots(target, st.text, scroll * 1.6, { dir: 'h', cols: Math.round(target.width / 6), rows: Math.round(h / 6), color, bg: book.current === 'tools' ? '#04141c' : '#120808' });
     if (media) {
       // CM：動画か画面写真を映し、下にドット文字の帯
       const ctx = cv.getContext('2d');
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
       const mw = media.videoWidth || media.naturalWidth, mh = media.videoHeight || media.naturalHeight;
-      const band = wide ? cv.height * 0.22 : cv.height * 0.12;
       const k = Math.max(cv.width / mw, (cv.height - band) / mh) * (media.tagName === 'IMG' ? 1 + 0.08 * Math.sin(book.time * 0.4) : 1);
       const pan = media.tagName === 'IMG' ? Math.sin(book.time * 0.25) * 0.5 + 0.5 : 0.5;
       ctx.drawImage(media, (cv.width - mw * k) * pan, (cv.height - band - mh * k) / 2, mw * k, mh * k);
       const strip = stripCanvas(cv.width, band);
-      drawDots(strip, st.text, scroll * 1.6, { dir: 'h', cols: Math.round(cv.width / 5), rows: Math.round(band / 5), color });
+      dots(strip, band);
       ctx.drawImage(strip, 0, cv.height - band);
-    } else if (wide) drawDots(bw, st.text, scroll * 1.6, { dir: 'h', cols: 48, rows: 48, color });
-    else drawDots(bc, st.text, scroll, { color });
-    (wide ? wideTex : screenTex).needsUpdate = true;
+    } else dots(cv, cv.height);
+    ct.needsUpdate = true;
     if (book.district) animateDistrict(book.district, book.time, dt, hub.selected);
   });
 

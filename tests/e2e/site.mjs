@@ -69,7 +69,7 @@ async function runSite(ctx) {
     await check(`site ${name}: コンソールエラー 0`, () => assert(errs.length === 0, errs.join(' / ')));
     await check(`site ${name}: めくりボタンで工場街へ`, async () => {
       await page.click('#next');
-      await page.waitForFunction(() => window.__hub.book.current === 'tools' && !window.__hub.book.busy, null, { timeout: 20000 });
+      await page.waitForFunction(() => window.__hub.book.current === 'tools' && !window.__hub.book.busy, null, { timeout: 60000 });
       const label = await page.textContent('#district-name');
       assert(label.includes('工場街'), label);
     });

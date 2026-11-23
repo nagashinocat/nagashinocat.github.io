@@ -16,9 +16,11 @@ const plans = { games: planDistrict('games', by.games, 1), tools: planDistrict('
 const stage = createStage(document.getElementById('app'));
 const bc = document.createElement('canvas'); bc.width = 180; bc.height = 640;
 const bt = new THREE.CanvasTexture(bc); bt.colorSpace = THREE.SRGBColorSpace;
-const book = createBook(stage, { works, plans, billboardTex: bt });
+const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const t = new THREE.CanvasTexture(c); return { c, tex: t }; };
+const screens = { games: mk(320, 320), tools: mk(480, 300), wip: mk(480, 270) };
+const book = createBook(stage, { works, plans, screens });
 let scroll = 0;
-stage.onFrame(dt => { scroll += dt * 40; drawDots(bc, 'NEW ＊ 超能力者の証明', scroll); bt.needsUpdate = true; if (book.district) animateDistrict(book.district, book.time, dt, null); });
+stage.onFrame(dt => { scroll += dt * 40; drawDots(screens[book.current].c, 'NEW ＊ 超能力者の証明', scroll, { dir: 'h' }); screens[book.current].tex.needsUpdate = true; if (book.district) animateDistrict(book.district, book.time, dt, null); });
 window.__hub = { stage, book, plans };
 await book.open();
 document.title = 'opened';
