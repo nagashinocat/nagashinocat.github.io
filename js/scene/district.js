@@ -8,6 +8,8 @@ import { rng } from '../rng.js';
 
 const H = Math.PI / 2;
 const inkMat = new THREE.LineBasicMaterial({ color: INK });
+const hullMat = new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide });
+const YAW = { east: Math.PI / 2, west: -Math.PI / 2, south: 0 };
 const canvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const tex = c => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
 
@@ -43,9 +45,24 @@ export function groundTexture(kind, seed = 1) {
     // 路面に映るネオン
     for (let i = 0; i < 40; i++) { const x = r.range(0, 1024), y = r.range(0, 720), col = r.pick(['255,79,163', '79,216,255', '255,178,31']); const gr = g.createRadialGradient(x, y, 0, x, y, 40); gr.addColorStop(0, `rgba(${col},0.35)`); gr.addColorStop(1, `rgba(${col},0)`); g.fillStyle = gr; g.fillRect(x - 40, y - 40, 80, 80); }
   }
+  // 路地（中央の帯）：濡れた路面にネオンが縦に映り込む
+  const ax0 = 512 - 64, aw = 128;
+  g.fillStyle = kind === 'games' ? '#140c1c' : kind === 'tools' ? '#2a2422' : '#5a4c3c';
+  g.fillRect(ax0, 0, aw, 720);
+  if (kind !== 'wip') {
+    for (let i = 0; i < 70; i++) {
+      const x = ax0 + r.range(4, aw - 4), y = r.range(0, 720), len = r.range(30, 160), col = kind === 'games' ? r.pick(['255,79,163', '79,216,255', '255,178,31', '180,107,255', '255,59,59']) : '255,170,90';
+      const gr = g.createLinearGradient(0, y, 0, y + len); gr.addColorStop(0, `rgba(${col},0)`); gr.addColorStop(0.5, `rgba(${col},0.55)`); gr.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = gr; g.fillRect(x, y, r.range(2, 7), len);
+    }
+    // 水たまりのハイライト
+    for (let i = 0; i < 24; i++) { g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 1; g.beginPath(); g.ellipse(ax0 + r.range(10, aw - 10), r.range(0, 720), r.range(6, 22), r.range(2, 5), 0, 0, 7); g.stroke(); }
+  }
+  g.strokeStyle = INK; g.lineWidth = 3; g.beginPath(); g.moveTo(ax0, 0); g.lineTo(ax0, 720); g.moveTo(ax0 + aw, 0); g.lineTo(ax0 + aw, 720); g.stroke();
   if (kind === 'wip') { for (let i = 0; i < 300; i++) { g.fillStyle = r.pick(['#5a4c3c', '#7d6a54', '#4b4036']); g.fillRect(r.range(0, 1024), r.range(0, 720), r.range(2, 8), r.range(2, 6)); } }
-  screentone(g, 0, 0, 1024, 720, { dot: 1.2, spacing: 6, color: 'rgba(0,0,0,0.35)' });
-  crosshatch(g, 0, 0, 1024, 720, { density: 1, gap: 14, color: 'rgba(0,0,0,0.12)' });
+  screentone(g, 0, 0, ax0, 720, { dot: 1.2, spacing: 6, color: 'rgba(0,0,0,0.35)' });
+  screentone(g, ax0 + aw, 0, 1024 - ax0 - aw, 720, { dot: 1.2, spacing: 6, color: 'rgba(0,0,0,0.35)' });
+  crosshatch(g, 0, 0, 1024, 720, { density: 1, gap: 14, color: 'rgba(0,0,0,0.1)' });
   for (let i = 0; i < 30; i++) inkLine(g, [[r.range(0, 1024), r.range(0, 720)], [r.range(0, 1024), r.range(0, 720)]], { weight: 0.8, r });
   return tex(c);
 }
@@ -55,10 +72,12 @@ function box(b, facadeTex, roofTex) {
   const side = new THREE.MeshBasicMaterial({ map: facadeTex, color: 0x8a7a96 });
   const shade = new THREE.MeshBasicMaterial({ map: facadeTex, color: 0x5a4a66 });
   const roof = new THREE.MeshBasicMaterial({ map: roofTex });
-  const geo = new THREE.BoxGeometry(b.w, b.h, b.d);
-  const mesh = new THREE.Mesh(geo, [shade, side, roof, roof, front, shade]); // +x,-x,+y,-y,+z,-z（夕日は左から）
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), inkMat);
-  mesh.add(edges);
+  const geo = new THREE.BoxGeometry(b.fw, b.h, b.fd);
+  const mesh = new THREE.Mesh(geo, [shade, side, roof, roof, front, shade]); // +x,-x,+y,-y,+z,-z
+  mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), inkMat));
+  // 太い墨の輪郭（裏返した一回り大きい箱）
+  const o = 0.007;
+  mesh.add(new THREE.Mesh(new THREE.BoxGeometry(b.fw + o, b.h + o, b.fd + o), hullMat));
   return mesh;
 }
 
@@ -86,56 +105,65 @@ export function buildDistrict(plan, works, textures) {
   const pivots = [], signs = [], workSigns = [];
   const bmap = new Map();
 
-  for (const b of plan.buildings) {
-    const { w, h } = facadeSize(b);
+  for (const b0 of plan.buildings) {
+    // 正面の幅 fw と奥行き fd（建物の向きで x/z が入れ替わる）
+    const side = b0.face === 'east' || b0.face === 'west';
+    const b = { ...b0, fw: side ? b0.d : b0.w, fd: side ? b0.w : b0.d };
+    const { w, h } = facadeSize({ w: b.fw, h: b.h });
     const c = canvas(w, h);
-    drawFacade(c, b, plan.kind, rng(r.int(1, 1e9)));
+    drawFacade(c, { ...b, w: b.fw }, plan.kind, rng(r.int(1, 1e9)));
     const ft = tex(c);
-    if (b.art) new THREE.TextureLoader().load(b.art, t => { t.colorSpace = THREE.SRGBColorSpace; mesh.material[4].map = t; mesh.material[4].transparent = true; mesh.material[4].needsUpdate = true; });
     const mesh = box(b, ft, r.pick(roofs));
-    mesh.position.set(0, b.h / 2, -b.d / 2);
-    // 折り目は建物の手前の下辺
+    if (b.art) new THREE.TextureLoader().load(b.art, t => { t.colorSpace = THREE.SRGBColorSpace; mesh.material[4].map = t; mesh.material[4].transparent = true; mesh.material[4].needsUpdate = true; });
+    mesh.position.set(0, b.h / 2, -b.fd / 2);
+    // 折り目は建物の正面の下辺。路地を向いて立ち上がる
     const pivot = new THREE.Group();
-    pivot.position.set(b.x, 0, b.z + b.d / 2);
+    pivot.rotation.order = 'YXZ';
+    const yaw = YAW[b.face] ?? 0;
+    pivot.position.set(b.face === 'east' ? b.x + b.w / 2 : b.face === 'west' ? b.x - b.w / 2 : b.x, 0, b.face === 'south' ? b.z + b.d / 2 : b.z);
+    pivot.rotation.y = yaw;
     pivot.add(mesh);
     pivot.rotation.x = -H;
-    pivot.userData = { delay: (rows - 1 - b.row) * 0.13 + r.range(0, 0.12), bldg: b };
+    pivot.userData = { delay: (rows - 1 - b.row) * 0.13 + (b.strip === 'outer' ? 0.18 : 0) + r.range(0, 0.1), bldg: b, yaw };
     root.add(pivot);
     pivots.push(pivot);
-    bmap.set(b.id, { b, mesh });
+    bmap.set(b.id, { b, mesh, yaw });
   }
 
-  // 看板
+  // 看板：路地にせり出す縦看板は、どの建物に付いても画面（手前）を向く
   for (const s of plan.signs) {
     const host = bmap.get(s.bldgId);
     if (!host) continue;
-    const { b, mesh } = host;
+    const { b, mesh, yaw } = host;
     const isWork = !!s.workId;
+    const juts = !!s.project && b.face !== 'south';
     let ww, hh;
-    if (isWork) { ww = s.vertical ? Math.min(0.09, b.w * 0.5) : Math.min(0.3, b.w * 0.95); hh = s.vertical ? Math.min(0.34, b.h * 0.85) : ww * 0.3; }
-    else { ww = Math.min(b.w * 0.9, s.w * 0.22); hh = s.h * 0.38; }
-    const px = 180;
-    const c = canvas(Math.round(ww / hh > 1 ? px * ww / hh : px), Math.round(ww / hh > 1 ? px : px * hh / ww));
-    drawSign(c, { text: s.text, color: s.color, isWork, vertical: s.vertical });
-    const mat = new THREE.MeshBasicMaterial({ map: tex(c), color: isWork ? 0xffffff : 0xdddddd });
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(ww, hh), mat);
-    sign.add(new THREE.LineSegments(new THREE.EdgesGeometry(sign.geometry), inkMat));
-    const y = THREE.MathUtils.clamp(s.v * b.h, hh / 2 + 0.02, b.h - hh / 2 - 0.005);
-    const x = THREE.MathUtils.clamp((s.u - 0.5) * b.w, -b.w / 2 + ww / 2, b.w / 2 - ww / 2);
-    // 飾りの縦看板は壁から突き出す（九龍城ふう）
-    const juts = !isWork && s.vertical && r.next() < 0.6;
-    if (juts) { sign.rotation.y = Math.PI / 2 * (r.next() < 0.5 ? 1 : -1); sign.position.set(x, y - b.h / 2, b.d / 2 + ww / 2 + 0.004); }
-    else sign.position.set(x, y - b.h / 2, b.d / 2 + (isWork ? 0.012 : 0.004 + r.range(0, 0.006)));
-    mesh.add(sign);
-    if (isWork) {
-      sign.userData = { workId: s.workId, phase: r.range(0, 6) };
-      workSigns.push(sign);
-      // 支柱
-      const bracket = new THREE.Mesh(new THREE.BoxGeometry(ww * 0.9, 0.006, 0.012), new THREE.MeshBasicMaterial({ color: 0x2a2228 }));
-      bracket.position.set(sign.position.x, sign.position.y - hh / 2 - 0.004, b.d / 2 + 0.006);
-      mesh.add(bracket);
-      void byId;
+    if (isWork) { ww = 0.075; hh = Math.min(0.3, b.h * 0.7); }
+    else if (juts) { ww = r.range(0.035, 0.06); hh = r.range(0.09, 0.2); }
+    else { ww = Math.min(b.fw * 0.85, s.w * 0.22); hh = s.vertical ? Math.min(b.h * 0.5, s.h * 0.35) : s.h * 0.35; ww = s.vertical ? Math.min(ww, hh * 0.4) : ww; }
+    const px = 200, ratio = ww / hh;
+    const c = canvas(Math.round(ratio > 1 ? px * ratio : px), Math.round(ratio > 1 ? px : px / ratio));
+    drawSign(c, { text: s.text, color: s.color, isWork, vertical: s.vertical || juts });
+    const faceMat = new THREE.MeshBasicMaterial({ map: tex(c), color: isWork ? 0xffffff : 0xdddddd });
+    const edgeMat = new THREE.MeshBasicMaterial({ color: '#1d1220' });
+    const t = 0.008;
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(ww, hh, t), [edgeMat, edgeMat, edgeMat, edgeMat, faceMat, faceMat]);
+    sign.add(new THREE.Mesh(new THREE.BoxGeometry(ww + 0.006, hh + 0.006, t + 0.004), hullMat));
+    const y = THREE.MathUtils.clamp(s.v * b.h, hh / 2 + 0.03, b.h - hh / 2 - 0.005);
+    if (juts) {
+      // 壁から路地へ突き出す。ローカルで手前(+z)が路地、看板の面は世界の +z（カメラ）を向く
+      const ux = THREE.MathUtils.clamp((s.u - 0.5) * b.fw, -b.fw / 2 + 0.01, b.fw / 2 - 0.01);
+      sign.rotation.y = -yaw;
+      sign.position.set(ux, y - b.h / 2, b.fd / 2 + ww / 2 + 0.012);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.004, ww + 0.02), new THREE.MeshBasicMaterial({ color: INK }));
+      arm.position.set(ux, y - b.h / 2 + hh / 2 - 0.004, b.fd / 2 + ww / 2 + 0.006);
+      mesh.add(arm);
+    } else {
+      const x = THREE.MathUtils.clamp((s.u - 0.5) * b.fw, -b.fw / 2 + ww / 2, b.fw / 2 - ww / 2);
+      sign.position.set(x, y - b.h / 2, b.fd / 2 + t / 2 + 0.002 + r.range(0, 0.004));
     }
+    mesh.add(sign);
+    if (isWork) { sign.userData = { workId: s.workId, phase: r.range(0, 6), faceMat }; workSigns.push(sign); }
     signs.push(sign);
   }
 
@@ -261,7 +289,7 @@ export function animateDistrict(group, time, dt, selectedId) {
   for (const s of u.workSigns) {
     const on = s.userData.workId === selectedId;
     const k = on ? 1.35 : 0.8 + 0.2 * Math.sin(time * (Math.PI * 2 / 2.4) + s.userData.phase);
-    s.material.color.setScalar(k);
+    (s.userData.faceMat || s.material).color.setScalar(k);
     const sc = on ? 1.12 : 1; s.scale.setScalar(s.scale.x + (sc - s.scale.x) * Math.min(1, dt * 10));
   }
   if (u.cars) {

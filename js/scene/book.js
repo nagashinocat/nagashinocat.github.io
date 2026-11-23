@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { popupAngle, foldAngle } from './popup.js';
 import { buildDistrict, groundTexture } from './district.js';
+import { buildPictureDistrict, pictureProjection } from './picture.js';
 import { INK, screentone, inkLine } from '../draw/manga.js';
 import { rng } from '../rng.js';
 
@@ -81,7 +82,7 @@ function halfPlane(map, side) {
   return new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map }));
 }
 
-export function createBook(stage, { works, plans, billboardTex, reducedMotion = false }) {
+export function createBook(stage, { works, plans, billboardTex, billboardWideTex, pictures = {}, reducedMotion = false }) {
   const { scene } = stage;
   const speed = reducedMotion ? 5 : 1;
   // 空と遠景
@@ -123,7 +124,13 @@ export function createBook(stage, { works, plans, billboardTex, reducedMotion = 
 
   const districts = {};
   const getDistrict = k => {
-    if (!districts[k]) { districts[k] = buildDistrict(plans[k], works, { billboard: billboardTex }); districts[k].visible = false; scene.add(districts[k]); }
+    if (!districts[k]) {
+      const P = pictures[k];
+      districts[k] = P
+        ? buildPictureDistrict(P, works.filter(w => w.district === k), { billboard: billboardWideTex })
+        : buildDistrict(plans[k], works, { billboard: billboardTex });
+      districts[k].visible = false; scene.add(districts[k]);
+    }
     return districts[k];
   };
 
@@ -135,17 +142,24 @@ export function createBook(stage, { works, plans, billboardTex, reducedMotion = 
     anims = anims.filter(a => { a.t += dt; const x = Math.min(1, a.t / a.dur); a.fn(x); if (x >= 1) { a.ok(); return false; } return true; });
   });
 
+  const stand = (p, a) => p.userData.stand ? p.userData.stand(a) : (p.rotation.x = a - H);
+  const streetOf = d => {
+    const v = d.userData.view;
+    if (v?.picture) return { position: v.position, target: v.target, projection: aspect => pictureProjection(v.picture, aspect) };
+    return { position: new THREE.Vector3(0, 0.045, 0.92), target: new THREE.Vector3(0, 0.42, -0.7), fov: 58 };
+  };
+  async function dive(d) { stage.setPickables([...d.userData.workSigns, ...d.userData.screenParts]); stage.setStreetView(streetOf(d)); await stage.flyTo('street', 1.8 / speed); }
   async function popUp(d) {
     d.visible = true;
     const piv = d.userData.pivots;
-    piv.forEach(p => { p.rotation.x = -H; });
+    piv.forEach(p => stand(p, 0));
     d.userData.decor.scale.y = 0.001;
     d.userData.screenMat.color.setScalar(0);
     const maxDelay = Math.max(...piv.map(p => p.userData.delay));
     const dur = 0.7 / speed;
     await tween(maxDelay / speed + dur, x => {
       const t = x * (maxDelay / speed + dur);
-      for (const p of piv) p.rotation.x = popupAngle(t, p.userData.delay / speed, dur) - H;
+      for (const p of piv) stand(p, popupAngle(t, p.userData.delay / speed, dur));
     });
     await tween(0.35, x => { d.userData.decor.scale.y = Math.max(0.001, 1 - (1 - x) ** 3); });
     // 掲示板点灯（チカチカ）
@@ -157,7 +171,7 @@ export function createBook(stage, { works, plans, billboardTex, reducedMotion = 
     const maxDelay = 0.25;
     await tween(maxDelay + 0.45, x => {
       const t = x * (maxDelay + 0.45);
-      for (const p of piv) p.rotation.x = foldAngle(t, (p.userData.bldg.row / 5) * maxDelay, 0.45) - H;
+      for (const p of piv) stand(p, foldAngle(t, (p.userData.bldg.row / 5) * maxDelay, 0.45));
     });
     d.visible = false;
   }
@@ -170,6 +184,7 @@ export function createBook(stage, { works, plans, billboardTex, reducedMotion = 
     await tween(1.1, x => { const e = 1 - (1 - x) ** 3; right.rotation.z = Math.PI * (1 - e); right.position.y = 0.06 * (1 - e); });
     book.district = getDistrict('games');
     await popUp(book.district);
+    await dive(book.district);
     book.busy = false;
   };
 
@@ -178,6 +193,7 @@ export function createBook(stage, { works, plans, billboardTex, reducedMotion = 
     book.busy = true;
     const forward = KINDS.indexOf(kind) > KINDS.indexOf(book.current);
     const oldK = book.current;
+    await stage.flyTo('overview', 1.0 / speed);
     await foldDown(book.district);
     // めくる：前へは右ページが左へ、戻るは左ページが右へ
     sheetFront.material.map = grounds[oldK]; sheetBack.material.map = grounds[kind];
@@ -191,6 +207,7 @@ export function createBook(stage, { works, plans, billboardTex, reducedMotion = 
     book.onChange?.(kind);
     book.district = getDistrict(kind);
     await popUp(book.district);
+    await dive(book.district);
     book.busy = false;
   };
   return book;

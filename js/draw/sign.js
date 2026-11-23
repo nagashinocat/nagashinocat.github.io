@@ -74,7 +74,16 @@ export function drawSign(canvas, { text, color, isWork, vertical }) {
     else { ctx.fillStyle = color === '#7cff6b' ? '#1d7a2a' : '#c4142c'; fn(); }
   };
   const n = f.lines.length;
-  if (!vertical) {
+  if (vertical && !/[\u3000-\u9fff\uff00-\uffef]/.test(text)) {
+    // 英字の縦看板：90度回して横書き
+    const len = H - pad * 2 - (isWork ? Math.min(W, H) * 0.3 : 0);
+    let p = Math.floor((W - pad * 2) * 0.8);
+    ctx.font = `${p}px ${FONT}`;
+    while (p > 8 && ctx.measureText(text).width > len) { p--; ctx.font = `${p}px ${FONT}`; }
+    ctx.save(); ctx.translate(W / 2, pad + len / 2); ctx.rotate(Math.PI / 2);
+    paint(() => ctx.fillText(text, 0, 0));
+    ctx.restore();
+  } else if (!vertical) {
     const cx = (W - (isWork ? Math.min(W, H) * 0.3 : 0)) / 2;
     f.lines.forEach((l, i) => paint(() => ctx.fillText(l, cx, H / 2 + (i - (n - 1) / 2) * px * 1.1)));
   } else {

@@ -53,3 +53,9 @@ test('作品看板には▶が入る、飾りには入らない', () => {
   assert.ok(has(a)); assert.ok(!has(b));
 });
 test('ダクト模様が描ける', () => { for (const k of ['duct', 'tube', 'wire']) { const c = recCanvas(64, 256); drawClutterStrip(c, k, rng(1)); assert.ok(c.log.length > 5); } });
+test('英字の縦看板は文字を90度回して1行で描く', () => {
+  const c = recCanvas(120, 480);
+  drawSign(c, { text: "while it's raining", color: '#4fd8ff', isWork: true, vertical: true });
+  assert.ok(c.log.some(e => e[0] === 'rotate'));
+  assert.ok(c.log.some(e => e[0] === 'fillText' && e[1] === "while it's raining"));
+});

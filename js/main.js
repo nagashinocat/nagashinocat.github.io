@@ -58,10 +58,13 @@ async function startCity(works) {
   // 掲示板の画面
   const bc = document.createElement('canvas'); bc.width = 180; bc.height = 640;
   const screenTex = new THREE.CanvasTexture(bc); screenTex.colorSpace = THREE.SRGBColorSpace;
-  const book = createBook(stage, { works, plans, billboardTex: screenTex, reducedMotion });
+  const bw = document.createElement('canvas'); bw.width = 320; bw.height = 320;
+  const wideTex = new THREE.CanvasTexture(bw); wideTex.colorSpace = THREE.SRGBColorSpace;
+  const { KOWLOON } = await import('./scene/picture.js');
+  const book = createBook(stage, { works, plans, billboardTex: screenTex, billboardWideTex: wideTex, pictures: { games: KOWLOON }, reducedMotion });
   const billboard = createBillboard(works);
   const selection = createSelection(billboard, { navigate: url => { location.href = url; } });
-  const hub = { stage, book, billboard, selection, plans, screenTex, ready: false, selected: null };
+  const hub = { stage, book, billboard, selection, plans, screenTex, wideTex, ready: false, selected: null };
   window.__hub = hub;
 
   // 品質：最初の60フレームが重ければ下げる
@@ -75,7 +78,11 @@ async function startCity(works) {
     hub.selected = st.mode === 'ticker' ? null : st.workId;
     if (st.text !== lastText) { lastText = st.text; scroll = 0; updatePlayButton(st); }
     scroll += dt * 26;
-    if (!hub.videoActive) { drawDots(bc, st.text, scroll, { color: st.mode === 'wip' ? '#ffd400' : '#ff9a1f' }); screenTex.needsUpdate = true; }
+    if (!hub.videoActive) {
+      const color = st.mode === 'wip' ? '#ffd400' : '#ff9a1f';
+      if (book.current === 'games') { drawDots(bw, st.text, scroll * 1.6, { dir: 'h', cols: 48, rows: 48, color }); wideTex.needsUpdate = true; }
+      else { drawDots(bc, st.text, scroll, { color }); screenTex.needsUpdate = true; }
+    }
     if (book.district) animateDistrict(book.district, book.time, dt, hub.selected);
   });
 

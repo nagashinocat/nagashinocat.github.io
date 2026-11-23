@@ -43,7 +43,9 @@ export function createBillboard(works) {
 
 // ドット文字：縦長画面に文字を縦に並べ、上へ流す。canvas は表示用、cols×rows がドット数
 let glyph = null;
-export function drawDots(canvas, text, scrollPx, { cols = 18, rows = 64, color = '#ff9a1f', bg = '#120808' } = {}) {
+export function drawDots(canvas, text, scrollPx, opts = {}) {
+  if (opts.dir === 'h') return drawDotsH(canvas, text, scrollPx, opts);
+  const { cols = 18, rows = 64, color = '#ff9a1f', bg = '#120808' } = opts;
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   if (!glyph) { glyph = document.createElement('canvas'); }
@@ -67,5 +69,31 @@ export function drawDots(canvas, text, scrollPx, { cols = 18, rows = 64, color =
       ctx.fillStyle = on ? color : 'rgba(255,154,31,0.08)';
       ctx.beginPath(); ctx.arc((x + 0.5) * dx, (y + 0.5) * dy, on ? rad * 1.1 : rad, 0, 7); ctx.fill();
     }
+  }
+}
+
+// 横に流すドット文字（正方形や横長の画面用）。2段：上=題、下=一言
+let glyphH = null;
+export function drawDotsH(canvas, text, scrollPx, { cols = 64, rows = 40, color = '#ff9a1f', bg = '#120808' } = {}) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  if (!glyphH) glyphH = document.createElement('canvas');
+  const cell = Math.floor(rows * 0.7);
+  const g = glyphH.getContext('2d', { willReadFrequently: true });
+  g.font = `bold ${cell}px "DotGothic16","Hiragino Kaku Gothic StdN",sans-serif`;
+  const tw = Math.ceil(g.measureText(text + '　　').width) + cols;
+  glyphH.width = Math.max(cols, tw); glyphH.height = rows;
+  g.font = `bold ${cell}px "DotGothic16","Hiragino Kaku Gothic StdN",sans-serif`;
+  g.fillStyle = '#fff'; g.textBaseline = 'middle';
+  g.fillText(text, cols, rows / 2 + 1);
+  const data = g.getImageData(0, 0, glyphH.width, rows).data;
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  const dx = W / cols, dy = H / rows, rad = Math.min(dx, dy) * 0.38;
+  const off = Math.floor(scrollPx) % glyphH.width;
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    const sx = (x + off) % glyphH.width;
+    const on = data[(y * glyphH.width + sx) * 4 + 3] > 110;
+    ctx.fillStyle = on ? color : 'rgba(255,154,31,0.08)';
+    ctx.beginPath(); ctx.arc((x + 0.5) * dx, (y + 0.5) * dy, on ? rad * 1.1 : rad, 0, 7); ctx.fill();
   }
 }
