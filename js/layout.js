@@ -66,13 +66,22 @@ export function planDistrict(kind, works, seed) {
   const decor = [];
   const top = b => b.h * r.range(0.3, 0.95);
   for (const b of buildings) {
-    const nb = r.pick(buildings);
-    decor.push({ type: r.next() < 0.5 ? 'duct' : 'tube', from: [b.x + r.range(-0.4, 0.4) * b.w, top(b), b.z + b.d / 2], to: [nb.x, top(nb), nb.z + nb.d / 2] });
+    // 近所の建物へだけ渡す（同じ列か隣の列、横に近いもの）
+    const near = buildings.filter(o => o !== b && Math.abs(o.row - b.row) <= 1 && Math.abs(o.x - b.x) < 0.3);
+    const type = r.next() < 0.45 ? 'duct' : 'tube';
+    if (near.length) {
+      const nb = r.pick(near);
+      const y = Math.min(top(b), top(nb));
+      decor.push({ type, from: [b.x + r.range(-0.4, 0.4) * b.w, y, b.z + b.d / 2], to: [nb.x + r.range(-0.4, 0.4) * nb.w, Math.min(nb.h * 0.95, y + r.range(-0.08, 0.08)), nb.z + nb.d / 2] });
+    } else {
+      const x = b.x + r.range(-0.4, 0.4) * b.w;
+      decor.push({ type, from: [x, b.h * r.range(0.1, 0.4), b.z + b.d / 2], to: [x + r.range(-0.3, 0.3) * b.w, b.h * r.range(0.5, 0.95), b.z + b.d / 2] });
+    }
     if (r.next() < 0.6) decor.push({ type: 'tube', from: [b.x + r.range(-0.4, 0.4) * b.w, 0, b.z + b.d / 2 + 0.004], to: [b.x + r.range(-0.4, 0.4) * b.w, b.h, b.z + b.d / 2 + 0.004] });
   }
-  for (let i = 0; i < buildings.length; i++) {
-    const a = r.pick(buildings), b = r.pick(buildings);
-    if (a !== b) decor.push({ type: 'wire', from: [a.x, a.h, a.z], to: [b.x, b.h, b.z] });
+  for (const a of buildings) {
+    const near = buildings.filter(o => o !== a && Math.abs(o.x - a.x) < 0.4 && Math.abs(o.row - a.row) <= 2);
+    if (near.length && r.next() < 0.8) { const b = r.pick(near); decor.push({ type: 'wire', from: [a.x, a.h * r.range(0.6, 1), a.z + a.d / 2], to: [b.x, b.h * r.range(0.6, 1), b.z + b.d / 2] }); }
   }
   if (kind === 'games') for (let i = 0; i < 40; i++) { const b = r.pick(buildings); decor.push({ type: 'laundry', from: [b.x - b.w / 2, top(b), b.z + b.d / 2], to: [b.x + b.w / 2, top(b), b.z + b.d / 2] }); }
   if (kind === 'tools') for (const b of buildings) if (r.next() < 0.35) decor.push({ type: 'chimney', from: [b.x, b.h, b.z], to: [b.x, b.h + r.range(0.25, 0.6), b.z] });

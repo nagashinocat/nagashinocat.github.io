@@ -1,0 +1,25 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>scene</title>
+<style>html,body,#app{margin:0;height:100%;background:#000}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head><body><div id="app"></div>
+<script type="module">
+import * as THREE from 'three';
+import { createStage } from '../../js/scene/stage.js';
+import { createBook } from '../../js/scene/book.js';
+import { animateDistrict } from '../../js/scene/district.js';
+import { planDistrict } from '../../js/layout.js';
+import { loadWorks, worksByDistrict } from '../../js/works.js';
+import { drawDots } from '../../js/billboard.js';
+const works = await loadWorks('../../data/works.json');
+const by = worksByDistrict(works);
+const plans = { games: planDistrict('games', by.games, 1), tools: planDistrict('tools', by.tools, 1), wip: planDistrict('wip', by.wip, 1) };
+const stage = createStage(document.getElementById('app'));
+const bc = document.createElement('canvas'); bc.width = 180; bc.height = 640;
+const bt = new THREE.CanvasTexture(bc); bt.colorSpace = THREE.SRGBColorSpace;
+const book = createBook(stage, { works, plans, billboardTex: bt });
+let scroll = 0;
+stage.onFrame(dt => { scroll += dt * 40; drawDots(bc, 'NEW ＊ 超能力者の証明', scroll); bt.needsUpdate = true; if (book.district) animateDistrict(book.district, book.time, dt, null); });
+window.__hub = { stage, book, plans };
+await book.open();
+document.title = 'opened';
+</script></body></html>
