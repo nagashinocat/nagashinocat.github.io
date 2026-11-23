@@ -11,6 +11,7 @@ export async function routeThree(page) {
 }
 export async function openPage({ browser, srv }, path, viewport, opts = {}) {
   const page = await browser.newPage({ viewport, ...opts });
+  page.setDefaultTimeout(180000); // ソフトウェア描画は1コマが重いので、クリックの待ちを長めに
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
   page.on('console', m => { if (m.type() === 'error' && !/favicon|Failed to load resource/.test(m.text())) errs.push(m.text()); });
@@ -20,8 +21,8 @@ export async function openPage({ browser, srv }, path, viewport, opts = {}) {
 }
 export async function run(ctx) {
   const { check, assert, OUT } = ctx;
-  if (!process.argv.includes('--scene-only')) await runSite(ctx);
-  if (process.argv.includes('--site-only')) return;
+  await runSite(ctx);
+  return; // 旧3Dの街（scene.html）の確認は、紙の街に置き換えたので行わない
   for (const [name, vp] of [['phone', { width: 390, height: 844 }], ['pc', { width: 1280, height: 800 }]]) {
     const { page, errs } = await openPage(ctx, '/tests/e2e/scene.html', vp);
     await check(`scene ${name}: 本が開く`, async () => { await page.waitForFunction(() => document.title === 'opened', null, { timeout: 240000 }); });
@@ -63,17 +64,21 @@ async function runSite(ctx) {
   // 本体：スマホと PC
   for (const [name, vp] of [['phone', { width: 390, height: 844 }], ['pc', { width: 1280, height: 800 }]]) {
     const { page, errs } = await openPage(ctx, '/', vp, { hasTouch: name === 'phone' });
-    await check(`site ${name}: 本が開いて操作できる`, () => page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 240000 }));
+    await check(`site ${name}: スキップで路地に着いて操作できる`, async () => {
+      await page.waitForSelector('#skip:not([hidden])', { timeout: 240000 });
+      await page.click('#skip');
+      await page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 240000 });
+    });
     await page.waitForTimeout(900);
     await page.screenshot({ path: `${OUT}site-${name}.png` });
     await check(`site ${name}: コンソールエラー 0`, () => assert(errs.length === 0, errs.join(' / ')));
-    await check(`site ${name}: めくりボタンで工場街へ`, async () => {
-      await page.click('#next');
-      await page.waitForFunction(() => window.__hub.book.current === 'tools' && !window.__hub.book.busy, null, { timeout: 240000 });
-      const label = await page.textContent('#district-name');
-      assert(label.includes('工場'), label);
+    await check(`site ${name}: 看板に触れると掲示板に予告が出る`, async () => {
+      const [id, x, y] = await page.evaluate(() => { const h = window.__hub.world.stands[0]; return [h.userData.workId, ...window.__hub.world.screenOf(h)]; });
+      if (name === 'phone') await page.touchscreen.tap(x, y); else await page.mouse.move(x, y);
+      await page.waitForFunction(id => window.__hub.billboard.state().workId === id, id, { timeout: 60000 });
+      assert(!(await page.isHidden('#play')), 'あそぶボタンが出ない');
     });
-    await page.screenshot({ path: `${OUT}site-${name}-tools.png` });
+
     await check(`site ${name}: 一覧が開いてリンクが正しい`, async () => {
       await page.click('#open-list');
       await page.waitForSelector('#list:not([hidden])');
@@ -85,6 +90,7 @@ async function runSite(ctx) {
   // 幅 360 ではみ出さない、長い題は折り返す
   {
     const { page } = await openPage(ctx, '/', { width: 360, height: 740 }, { hasTouch: true });
+    await page.click('#skip').catch(() => {});
     await page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 240000 });
     await page.click('#open-list');
     await page.screenshot({ path: `${OUT}site-360-list.png`, fullPage: true });
@@ -102,12 +108,13 @@ async function runSite(ctx) {
   {
     const { page } = await openPage(ctx, '/', { width: 1280, height: 800 });
     await page.route('**/assets/cm/**', r => r.fulfill({ status: 404, body: '' }));
+    await page.waitForSelector('#skip:not([hidden])', { timeout: 240000 }); await page.click('#skip');
     await page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 240000 });
     await check('CM動画が読めないと文字表示に戻る', async () => {
       const id = await page.evaluate(() => window.__hub.works.find(w => w.cm)?.id);
       assert(id, 'cm のある作品がない');
       await page.evaluate(id => window.__hub.billboard.preview(id), id);
-      await page.waitForFunction(() => window.__hub.billboard.state().video === null, null, { timeout: 10000 });
+      await page.waitForFunction(() => window.__hub.billboard.state().video === null, null, { timeout: 90000 });
     });
     await check('CM動画が読めれば掲示板に映る', async () => {
       await page.unroute('**/assets/cm/**');

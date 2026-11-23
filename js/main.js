@@ -1,14 +1,11 @@
 // 起動と配線
 import { loadWorks, worksByDistrict } from './works.js';
-import { renderList, DISTRICT_LABEL } from './list.js';
+import { renderList } from './list.js';
 import { createBillboard, drawDots } from './billboard.js';
 import { createSelection } from './selection.js';
-import { planDistrict } from './layout.js';
 import { syncVideos, shouldRedraw } from './util.js';
 
 const $ = id => document.getElementById(id);
-const KINDS = ['games', 'tools', 'wip'];
-const SEED = 11;
 
 function hasWebGL() {
   try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); }
@@ -36,7 +33,7 @@ async function start() {
 }
 
 function fallback() {
-  try { window.__hub?.stage?.dispose(); } catch { /* もう止まっている */ }
+  try { window.__hub?.world?.dispose(); } catch { /* もう止まっている */ }
   $('loading')?.remove();
   $('app')?.remove();
   $('open-list').hidden = true;
@@ -44,68 +41,53 @@ function fallback() {
 }
 
 async function startCity(works) {
-  const THREE = await import('three');
-  const { createStage } = await import('./scene/stage.js');
-  const { createBook } = await import('./scene/book.js');
-  const { animateDistrict } = await import('./scene/district.js');
-
+  const { createWorld } = await import('./scene/world.js');
   // 看板の文字は一度だけ描くので、先にフォントを待つ（最大2.5秒）
-  try { await Promise.race([Promise.all(['400 40px "Dela Gothic One"', '400 40px "DotGothic16"'].map(f => document.fonts.load(f))), new Promise(ok => setTimeout(ok, 2500))]); } catch { /* 代わりの字で描く */ }
-  const by = worksByDistrict(works);
-  const plans = Object.fromEntries(KINDS.map(k => [k, planDistrict(k, by[k], SEED)]));
+  try { await Promise.race([Promise.all(['400 40px "Dela Gothic One"', '400 40px "DotGothic16"', '400 40px "Righteous"'].map(f => document.fonts.load(f))), new Promise(ok => setTimeout(ok, 2500))]); } catch { /* 代わりの字で描く */ }
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const stage = createStage($('app'));
   const coarse = matchMedia('(pointer: coarse)').matches;
   const strong = (navigator.hardwareConcurrency || 4) >= 6 && !coarse;
-  stage.setTier(strong ? 'high' : 'low');
-
-  // 掲示板の画面（ページごとに形が違う）
-  const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return { c, tex: t }; };
-  const screens = { games: mk(320, 320), tools: mk(480, 300), wip: mk(480, 270) };
-  // 九龍城の部品（読めなければ箱の建物で）
-  let parts = null;
-  try { const { loadKowloonParts } = await import('./scene/models.js'); parts = await loadKowloonParts(); } catch (e) { console.warn('部品を読めませんでした', e); }
-  const book = createBook(stage, { works, plans, screens, parts, reducedMotion });
+  const manual = new URLSearchParams(location.search).has('manual');
+  // タワーの画面（横長 16:9）
+  const screen = document.createElement('canvas'); screen.width = 640; screen.height = 360;
+  const world = await createWorld($('app'), { works, screenCanvas: screen, tier: strong ? 'high' : 'low', reducedMotion, manual });
   const billboard = createBillboard(works);
   const selection = createSelection(billboard, { navigate: url => { location.href = url; } });
-  const hub = { stage, book, billboard, selection, plans, works, screens, ready: false, selected: null, videoReady: false };
+  const hub = { world, billboard, selection, works, screen, ready: false, selected: null, videoReady: false };
   window.__hub = hub;
 
-  // 品質：最初の60フレームが重ければ下げる
-  let frames = 0, acc = 0;
+  // 選ばれた看板は明るく脈打つ
+  const faceBase = new Map(world.stands.map(h => [h, h.userData.faceMat.color.clone()]));
   let scroll = 0, lastText = '', drawAcc = 0;
   const redraw = {};
-  stage.onFrame(dt => {
-    if (frames < 60) { frames++; acc += dt; if (frames === 60 && acc / 60 > 1 / 38 && stage.tier === 'high') stage.setTier('low'); }
-    selection.locked = book.busy;
+  world.onFrame((dt, t) => {
+    selection.locked = !world.inAlley;
     billboard.tick(dt);
     const st = billboard.state();
     hub.selected = st.mode === 'ticker' ? null : st.workId;
+    for (const [h, c0] of faceBase) { const on = h.userData.workId === hub.selected; h.userData.faceMat.color.copy(c0).multiplyScalar(on ? 1.35 + 0.25 * Math.sin(t * 6) : 1); }
     if (st.text !== lastText) { lastText = st.text; scroll = 0; updatePlayButton(st); }
     scroll += dt * 26;
     syncVideos(videos, st.mode === 'cm' ? st.video : null);
-    const color = st.mode === 'wip' ? '#ffd400' : book.current === 'tools' ? '#7fe6ff' : '#ff9a1f';
-    const { c: cv, tex: ct } = screens[book.current];
+    const color = st.mode === 'wip' ? '#ffd400' : '#ff9a1f';
     const media = st.mode === 'cm' ? mediaFor(st) : null;
-    const animated = media ? 'video' : null; // 動画・写真は動くので毎回（30fpsまで）
-    if (animated) { drawAcc += dt; if (drawAcc < 1 / 30) { if (book.district) animateDistrict(book.district, book.time, dt, hub.selected); return; } drawAcc = 0; }
-    else if (!shouldRedraw(redraw, book.current + st.mode + st.text, scroll * 0.45, null)) { if (book.district) animateDistrict(book.district, book.time, dt, hub.selected); return; }
-    const band = cv.height * 0.22;
-    const dots = (target, h) => drawDots(target, st.text, scroll * 0.45, { dir: 'h', cols: Math.round(target.width / 6), rows: Math.round(h / 6), color, bg: book.current === 'tools' ? '#04141c' : '#120808' });
+    if (media) { drawAcc += dt; if (drawAcc < 1 / 30) return; drawAcc = 0; }
+    else if (!shouldRedraw(redraw, st.mode + st.text, scroll * 0.45, null)) return;
+    const band = screen.height * 0.2;
+    const dots = (target, h) => drawDots(target, st.text, scroll * 0.45, { dir: 'h', cols: Math.round(target.width / 6), rows: Math.round(h / 6), color, bg: '#120808' });
     if (media) {
       // CM：動画か画面写真を映し、下にドット文字の帯
-      const ctx = cv.getContext('2d');
-      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
+      const ctx = screen.getContext('2d');
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, screen.width, screen.height);
       const mw = media.videoWidth || media.naturalWidth, mh = media.videoHeight || media.naturalHeight;
-      const k = Math.max(cv.width / mw, (cv.height - band) / mh) * (media.tagName === 'IMG' ? 1 + 0.08 * Math.sin(book.time * 0.4) : 1);
-      const pan = media.tagName === 'IMG' ? Math.sin(book.time * 0.25) * 0.5 + 0.5 : 0.5;
-      ctx.drawImage(media, (cv.width - mw * k) * pan, (cv.height - band - mh * k) / 2, mw * k, mh * k);
-      const strip = stripCanvas(cv.width, band);
+      const k = Math.max(screen.width / mw, (screen.height - band) / mh) * (media.tagName === 'IMG' ? 1 + 0.08 * Math.sin(t * 0.4) : 1);
+      const pan = media.tagName === 'IMG' ? Math.sin(t * 0.25) * 0.5 + 0.5 : 0.5;
+      ctx.drawImage(media, (screen.width - mw * k) * pan, (screen.height - band - mh * k) / 2, mw * k, mh * k);
+      const strip = stripCanvas(screen.width, band);
       dots(strip, band);
-      ctx.drawImage(strip, 0, cv.height - band);
-    } else dots(cv, cv.height);
-    ct.needsUpdate = true;
-    if (book.district) animateDistrict(book.district, book.time, dt, hub.selected);
+      ctx.drawImage(strip, 0, screen.height - band);
+    } else dots(screen, screen.height);
+    world.screenTex.needsUpdate = true;
   });
 
   // CM：動画は選ばれた時だけ読む。失敗したら文字表示へ
@@ -134,20 +116,24 @@ async function startCity(works) {
     return null;
   }
 
-  // 看板の操作
-  const el = stage.renderer.domElement;
+  // 触れる：看板（1回目で予告・2回目で遊ぶ）、タワーの画面（遊ぶ）、猫、クジラ
+  const el = world.renderer.domElement;
   el.addEventListener('pointermove', e => {
-    if (e.pointerType !== 'mouse' || book.busy) return;
-    const hit = stage.pick(e.clientX, e.clientY);
+    if (e.pointerType !== 'mouse' || !world.inAlley) return;
+    const hit = world.pick(e.clientX, e.clientY);
     el.style.cursor = hit ? 'pointer' : 'grab';
     if (hit?.workId) selection.hover(hit.workId);
   });
   el.addEventListener('pointerup', e => {
-    if (!stage.isTap(e.clientX, e.clientY)) return; // ドラッグは選択にしない
-    selection.tap(stage.pick(e.clientX, e.clientY));
+    if (!world.isTap(e.clientX, e.clientY)) return; // ドラッグは選択にしない
+    if (!world.inAlley) { skipIntro(); return; }       // 本が開いている途中のタップは早送り
+    const hit = world.pick(e.clientX, e.clientY);
+    if (hit?.cat) { world.cat.tap(world.time); return; }
+    if (hit?.whale) { world.whale.tap(world.time); return; }
+    selection.tap(hit);
   });
 
-  const hint = $('hint'), play = $('play');
+  const hint = $('hint'), play = $('play'), skip = $('skip');
   function updatePlayButton(st) {
     if (st.mode === 'ticker') { play.hidden = true; hint.hidden = !hub.ready; return; }
     hint.hidden = true;
@@ -158,30 +144,14 @@ async function startCity(works) {
     play.disabled = st.mode === 'wip';
   }
   play.addEventListener('click', () => selection.tap({ billboard: true }));
-
-  // ページめくり
-  const setLabel = k => {
-    $('district-name').textContent = DISTRICT_LABEL[k][0];
-    $('district-sub').textContent = DISTRICT_LABEL[k][1];
-    $('prev').disabled = k === KINDS[0];
-    $('next').disabled = k === KINDS.at(-1);
-  };
-  const turn = d => {
-    const i = KINDS.indexOf(book.current) + d;
-    if (i < 0 || i >= KINDS.length || book.busy) return;
-    selection.tap(null);
-    book.turnTo(KINDS[i]);
-  };
-  book.onChange = setLabel;
-  $('prev').addEventListener('click', () => turn(-1));
-  $('next').addEventListener('click', () => turn(1));
-  addEventListener('keydown', e => { if (!$('list').hidden) return; if (e.key === 'ArrowRight') turn(1); if (e.key === 'ArrowLeft') turn(-1); });
-  setLabel('games');
+  function skipIntro() { world.skip(); }
+  skip.addEventListener('click', skipIntro);
 
   $('loading').classList.add('done');
   setTimeout(() => $('loading').remove(), 700);
-  await book.open();
-  $('turn').hidden = false;
+  if (!world.inAlley) skip.hidden = false;
+  await new Promise(ok => { const w = () => world.inAlley ? ok() : setTimeout(w, 100); w(); });
+  skip.hidden = true;
   hint.textContent = coarse ? '看板をタップ → もう一度タップであそぶ' : '看板にカーソル → クリックであそぶ';
   hint.hidden = false;
   hub.ready = true;

@@ -7,9 +7,12 @@ import { groundTextures, chochin } from './alley.js';
 import { glowTex } from './parts.js';
 import { rng } from '../rng.js';
 import { roundTower } from './tower.js';
+import { standSlots, orderForStands } from '../layout.js';
 
 const ROOT = new URL('../../', import.meta.url).href;
-export async function buildAlleyPaper({ seed = 5, entry = 0.62 } = {}) {
+export async function buildAlleyPaper({ seed = 5, entry = 0.62, works = null, screenCanvas = null } = {}) {
+const stands = [];
+let towerScreen = null, screenTex = null;
 const r = rng(seed);
 const ups = [];
 const scene = new THREE.Scene();
@@ -130,26 +133,30 @@ for (const side of [-1, 1]) {
   const { mergeGeometries } = await import('three/addons/utils/BufferGeometryUtils.js');
   scene.add(new THREE.Mesh(mergeGeometries(geos), wireMat));
 }
-// ゲームのスタンド看板：路地の両端に立てる（バナー＋題名）
+// 作品のスタンド看板：お店の前に、手前から奥へ1つずつ（バナー＋題名）
 {
-  const works = (await (await fetch(ROOT + 'data/works.json')).json()).filter(w => w.district === 'games');
+  const all = works || (await (await fetch(ROOT + 'data/works.json')).json()).filter(w => w.district === 'games');
+  const list = orderForStands(all), slots = standSlots(list.length);
   const TYPES = ['pillar', 'easel', 'hang'];
-  for (let i = 0; i < works.length; i++) {
-    const side = i % 2 ? 1 : -1, z = 0.36 - Math.floor(i / 2) * 0.12 - (side > 0 ? 0.05 : 0);
-    const s = await shopStand(works[i], TYPES[i % 3]);
+  for (let i = 0; i < list.length; i++) {
+    const { side, z } = slots[i];
+    const s = await shopStand(list[i], TYPES[i % 3]);
     s.group.position.set(side * (ALLEY / 2 - 0.022), 0.003, z);
     s.group.rotation.y = side * -0.45;
-    scene.add(s.group);
+    scene.add(s.group); stands.push(s.hit);
   }
 }
-// 奥のタワー：ジオラマと同じ丸いタワー
+// 奥のタワー：ジオラマと同じ丸いタワー（画面は横長 16:9）
 {
-  const c = document.createElement('canvas'); c.width = 640; c.height = 360; const g = c.getContext('2d');
-  const im = new Image(); im.src = ROOT + 'assets/shots/neko-tasukete.jpg'; await im.decode().catch(() => {});
-  g.fillStyle = '#000'; g.fillRect(0, 0, 640, 360); if (im.naturalWidth) { const k = Math.max(640 / im.naturalWidth, 360 / im.naturalHeight); g.drawImage(im, (640 - im.naturalWidth * k) / 2, (360 - im.naturalHeight * k) / 2, im.naturalWidth * k, im.naturalHeight * k); }
-  const st = new THREE.CanvasTexture(c); st.colorSpace = THREE.SRGBColorSpace;
-  const tw = roundTower({ R: 0.22, H: 1.6, screenTex: st, rng: () => r.next() });
-  tw.group.position.set(0, 0, -1.05); scene.add(tw.group); ups.push(tw.update);
+  let c = screenCanvas;
+  if (!c) {
+    c = document.createElement('canvas'); c.width = 640; c.height = 360; const g = c.getContext('2d');
+    const im = new Image(); im.src = ROOT + 'assets/shots/neko-tasukete.jpg'; await im.decode().catch(() => {});
+    g.fillStyle = '#000'; g.fillRect(0, 0, 640, 360); if (im.naturalWidth) { const k = Math.max(640 / im.naturalWidth, 360 / im.naturalHeight); g.drawImage(im, (640 - im.naturalWidth * k) / 2, (360 - im.naturalHeight * k) / 2, im.naturalWidth * k, im.naturalHeight * k); }
+  }
+  screenTex = new THREE.CanvasTexture(c); screenTex.colorSpace = THREE.SRGBColorSpace;
+  const tw = roundTower({ R: 0.22, H: 1.6, screenTex, rng: () => r.next() });
+  tw.group.position.set(0, 0, -1.05); scene.add(tw.group); ups.push(tw.update); towerScreen = tw.screen;
 }
 // 提灯の列と光
 for (const side of [-1, 1]) for (let z = 0.5; z > -0.6; z -= r.range(0.03, 0.06)) {
@@ -183,5 +190,5 @@ if (entry > 0.62) {
   mirror.rotation.x = -Math.PI / 2; mirror.position.set(0, 0.001, cz); scene.add(mirror);
 }
 
-return { scene, ups };
+return { scene, ups, stands, towerScreen, screenTex };
 }

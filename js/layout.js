@@ -107,3 +107,19 @@ export function planDistrict(kind, works, seed) {
   }
   return { kind, buildings, signs, billboard, decor };
 }
+
+// ---- 紙の路地：作品ごとのスタンド看板の置き場所 ----
+// 手前（カメラのすぐ先）から奥へ、左右交互に1つずつ。数が多いときは間を詰めて、タワーの手前に収める
+export function standSlots(n, { front = 0.34, back = -0.7 } = {}) {
+  const rows = Math.ceil(n / 2);
+  const step = n > 1 ? Math.min(0.13, (front - back) / (rows - 0.55)) : 0;
+  return Array.from({ length: n }, (_, i) => {
+    const side = i % 2 ? 1 : -1;
+    return { side, z: +(front - Math.floor(i / 2) * step - (side > 0 ? step * 0.45 : 0)).toFixed(4) };
+  });
+}
+// 並び：ゲーム（NEW→遊べる→近日）→ 道具 → 工事中
+export function orderForStands(works) {
+  const rank = w => ({ games: 0, tools: 1, wip: 2 }[w.district] ?? 3) * 10 + (w.isNew ? 0 : 1) + (w.url ? 0 : 2);
+  return works.map((w, i) => [w, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]);
+}
