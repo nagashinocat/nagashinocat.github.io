@@ -183,3 +183,126 @@ export function bracket(len, drop = 0.006) {
   strut.position.set(0, -drop * 2, len * 0.3); strut.rotation.x = Math.atan2(drop * 4, len * 0.6); g.add(strut);
   return g;
 }
+
+// ================= 看板の種類を増やす（形を切り抜いた紙・木・ブリキ・電球・ネオンの絵） =================
+const shapeMesh = (shape, depth, faceMat, sideMat) => {
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 24 });
+  geo.computeBoundingBox(); const bb = geo.boundingBox, w = bb.max.x - bb.min.x, h = bb.max.y - bb.min.y;
+  const uv = geo.attributes.uv, p = geo.attributes.position;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (p.getX(i) - bb.min.x) / w, (p.getY(i) - bb.min.y) / h);
+  geo.translate(-(bb.min.x + w / 2), -(bb.min.y + h / 2), -depth / 2);
+  const m = new THREE.Mesh(geo, [faceMat, sideMat]);
+  m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), new THREE.LineBasicMaterial({ color: '#efe6d6', transparent: true, opacity: 0.5 })));
+  return m;
+};
+const wood = (g, W, H) => { g.fillStyle = '#e9dfc4'; g.fillRect(0, 0, W, H); for (let i = 0; i < 60; i++) { g.strokeStyle = `rgba(120,90,50,${Math.random() * 0.25})`; g.lineWidth = 1; g.beginPath(); const y = Math.random() * H; g.moveTo(0, y); g.bezierCurveTo(W / 3, y + 4, W * 0.6, y - 4, W, y + 2); g.stroke(); } };
+const weather = (g, W, H, n = 220) => { g.globalCompositeOperation = 'destination-out'; for (let i = 0; i < n; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.6})`; g.beginPath(); g.arc(Math.random() * W, Math.random() * H, Math.random() * 3 + 0.5, 0, 7); g.fill(); } g.globalCompositeOperation = 'source-over'; };
+const fit = (g, text, maxW, px, font) => { g.font = `${px}px ${font}`; while (px > 6 && g.measureText(text).width > maxW) { px--; g.font = `${px}px ${font}`; } return px; };
+const SLAB = '"Rockwell","Righteous","Dela Gothic One",serif';
+const bulbRow = (group, pts, color = '#fff0b0') => {
+  const n = pts.length, im = new THREE.InstancedMesh(new THREE.SphereGeometry(0.0018, 6, 4), new THREE.MeshBasicMaterial({ color, toneMapped: false }), n);
+  const M = new THREE.Matrix4(); pts.forEach(([x, y, z], i) => { M.makeTranslation(x, y, z); im.setMatrixAt(i, M); }); group.add(im); return im;
+};
+const outlinePts = (shape, step, z) => { const pts = shape.getSpacedPoints(Math.max(8, Math.round(shape.getLength() / step))); return pts.map(p => [p.x, p.y, z]); };
+
+// 盾の形（ルートの標識ふう、電球の縁）
+function shieldShape(w, h) {
+  const s = new THREE.Shape(), x0 = -w / 2, x1 = w / 2, y1 = h / 2, y0 = -h / 2;
+  s.moveTo(x0 + w * 0.08, y1); s.quadraticCurveTo(0, y1 - h * 0.12, x1 - w * 0.08, y1);
+  s.quadraticCurveTo(x1 + w * 0.02, y1 - h * 0.25, x1, y1 - h * 0.3); s.quadraticCurveTo(x1, y0 + h * 0.2, 0, y0);
+  s.quadraticCurveTo(x0, y0 + h * 0.2, x0, y1 - h * 0.3); s.quadraticCurveTo(x0 - w * 0.02, y1 - h * 0.25, x0 + w * 0.08, y1);
+  return s;
+}
+function arrowShape(w, h, dir = 1) {
+  const s = new THREE.Shape(), a = w * 0.22;
+  const P = [[-w / 2, -h / 2], [w / 2 - a, -h / 2], [w / 2 - a, -h / 2 - h * 0.25], [w / 2, 0], [w / 2 - a, h / 2 + h * 0.25], [w / 2 - a, h / 2], [-w / 2, h / 2]].map(([x, y]) => [x * dir, y]);
+  s.moveTo(...P[0]); P.slice(1).forEach(p => s.lineTo(...p)); s.closePath(); return s;
+}
+function batShape(R) { // 質屋の看板の枠（こうもりの形をくずした丸）
+  const s = new THREE.Shape(); const n = 64;
+  for (let i = 0; i <= n; i++) { const a = i / n * Math.PI * 2, k = 1 + 0.12 * Math.max(0, Math.cos(a * 2)) ** 3 + 0.06 * Math.sin(a * 6); const x = Math.cos(a) * R * k * 1.15, y = Math.sin(a) * R * k; i ? s.lineTo(x, y) : s.moveTo(x, y); }
+  return s;
+}
+
+/** もっと種類のある看板。返り値は makeSign と同じ { group, hit, faceMat, update } */
+export function makeSign2(kind, text, color, size, { rng = Math.random } = {}) {
+  const [w, h] = size, group = new THREE.Group();
+  const R = 520 / Math.max(w, h), PW = Math.max(32, Math.round(w * R)), PH = Math.max(32, Math.round(h * R));
+  let faceMat, hit, update = null;
+  if (kind === 'shield') {
+    const c = cv(PW, PH), g = c.getContext('2d');
+    g.fillStyle = '#f2ead6'; g.fillRect(0, 0, PW, PH);
+    g.fillStyle = '#1a1414'; g.fillRect(0, PH * 0.32, PW, PH * 0.04);
+    let px = fit(g, text.split(' ')[0], PW * 0.7, PH * 0.16, SLAB); g.fillStyle = '#1a1414'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text.split(' ')[0], PW / 2, PH * 0.22);
+    const big = text.split(' ')[1] || '66'; px = fit(g, big, PW * 0.75, PH * 0.42, SLAB); g.fillText(big, PW / 2, PH * 0.6);
+    weather(g, PW, PH, 160);
+    faceMat = new THREE.MeshStandardMaterial({ map: tx(c), roughness: 0.8, emissive: 0xffffff, emissiveMap: tx(c), emissiveIntensity: 0.25 });
+    const sh = shieldShape(w, h);
+    hit = shapeMesh(sh, 0.004, faceMat, new THREE.MeshStandardMaterial({ color: '#1a1414' })); group.add(hit);
+    bulbRow(group, outlinePts(sh, 0.007, 0.0025).map(([x, y, z]) => [x * 0.92, y * 0.92, z]));
+  } else if (kind === 'arrow') {
+    const c = cv(PW, PH), g = c.getContext('2d');
+    const bg = rng() < 0.5 ? '#2a8a8a' : '#e8a030'; g.fillStyle = bg; g.fillRect(0, 0, PW, PH);
+    g.strokeStyle = '#f2ead6'; g.lineWidth = PH * 0.06; g.strokeRect(PH * 0.06, PH * 0.06, PW - PH * 0.12, PH - PH * 0.12);
+    g.textAlign = 'center'; g.textBaseline = 'middle'; fit(g, text, PW * 0.62, PH * 0.5, SLAB); g.fillStyle = bg === '#e8a030' ? '#7a1a14' : '#f2ead6'; g.fillText(text, PW * 0.44, PH / 2);
+    weather(g, PW, PH);
+    faceMat = new THREE.MeshStandardMaterial({ map: tx(c), roughness: 0.85 });
+    hit = shapeMesh(arrowShape(w, h, rng() < 0.5 ? 1 : -1), 0.003, faceMat, new THREE.MeshStandardMaterial({ color: '#4a3020' })); group.add(hit);
+  } else if (kind === 'plank') {
+    const c = cv(PW, PH), g = c.getContext('2d'); wood(g, PW, PH);
+    g.strokeStyle = '#7a1a14'; g.lineWidth = PH * 0.05; g.strokeRect(PH * 0.08, PH * 0.08, PW - PH * 0.16, PH - PH * 0.16);
+    g.textAlign = 'center'; g.textBaseline = 'middle'; fit(g, text, PW * 0.8, PH * 0.5, SLAB);
+    g.fillStyle = rng() < 0.5 ? '#b01a14' : '#1a1a1a'; g.strokeStyle = '#1a1010'; g.lineWidth = 3; g.strokeText(text, PW / 2, PH / 2); g.fillText(text, PW / 2, PH / 2);
+    weather(g, PW, PH, 300);
+    faceMat = new THREE.MeshStandardMaterial({ map: tx(c), roughness: 0.9 });
+    hit = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.003), [0, 0, 0, 0, 0, 0].map((_, i) => i === 4 ? faceMat : new THREE.MeshStandardMaterial({ color: '#6a4a2a' }))); group.add(hit);
+    for (const sx of [-1, 1]) { const n = new THREE.Mesh(new THREE.SphereGeometry(0.0012, 6, 4), new THREE.MeshStandardMaterial({ color: '#2a2020' })); n.position.set(sx * w * 0.44, 0, 0.0018); group.add(n); }
+  } else if (kind === 'tin') {
+    const c = cv(PW, PH), g = c.getContext('2d');
+    g.fillStyle = '#f4f2ec'; g.fillRect(0, 0, PW, PH);
+    g.strokeStyle = '#1a1a1a'; g.lineWidth = PW * 0.03; g.beginPath(); g.roundRect(PW * 0.05, PW * 0.05, PW * 0.9, PH - PW * 0.1, PW * 0.05); g.stroke();
+    const col = rng() < 0.5 ? '#f2c418' : '#e8341f';
+    g.fillStyle = col; g.beginPath(); g.arc(PW / 2, PH * 0.27, PW * 0.2, 0, 7); g.fill(); g.strokeStyle = '#1a1a1a'; g.lineWidth = 3; g.stroke();
+    g.fillStyle = '#1a1a1a'; g.font = `bold ${PW * 0.14}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('!', PW / 2, PH * 0.28);
+    const words = text.split(' '); words.forEach((t, i) => { fit(g, t, PW * 0.8, PH * 0.12, 'Impact,"Arial Black",sans-serif'); g.fillText(t, PW / 2, PH * (0.55 + i * 0.14)); });
+    for (const [x, y] of [[0.1, 0.06], [0.9, 0.06], [0.1, 0.94], [0.9, 0.94]]) { g.fillStyle = '#888'; g.beginPath(); g.arc(PW * x, PH * y, PW * 0.02, 0, 7); g.fill(); }
+    g.fillStyle = 'rgba(120,60,20,0.4)'; for (let i = 0; i < 40; i++) g.fillRect(Math.random() * PW, Math.random() * PH, 3, 3 + Math.random() * 10);
+    faceMat = new THREE.MeshStandardMaterial({ map: tx(c), roughness: 0.5, metalness: 0.2 });
+    hit = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.0012), [0, 0, 0, 0, 0, 0].map((_, i) => i === 4 ? faceMat : new THREE.MeshStandardMaterial({ color: '#9a9a9a' }))); group.add(hit);
+  } else if (kind === 'pawn') { // 香港の質屋：こうもり枠のネオン＋赤い円に一字、下に吊るした円
+    const R0 = w / 2;
+    const disc = (ch, r) => { const c = cv(256, 256), g = c.getContext('2d'); g.fillStyle = '#c81e18'; g.beginPath(); g.arc(128, 128, 124, 0, 7); g.fill(); g.strokeStyle = '#ffd24a'; g.lineWidth = 8; g.stroke(); g.font = `160px ${JP}`; g.fillStyle = '#ffd24a'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(ch, 128, 136); const m = new THREE.MeshBasicMaterial({ map: tx(c), toneMapped: false }); const d = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.004, 32), [new THREE.MeshBasicMaterial({ color: '#4a1010' }), m, m]); d.rotation.x = Math.PI / 2; return { d, m }; };
+    const a = disc([...text][0] || '押', R0 * 0.78); group.add(a.d); faceMat = a.m; hit = a.d;
+    const ring = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(batShape(R0).getSpacedPoints(80).map(p => new THREE.Vector3(p.x, p.y, 0.003)), true), 120, 0.0016, 6, true), new THREE.MeshBasicMaterial({ color: '#5aff7a', toneMapped: false }));
+    group.add(ring);
+    const b = disc([...text][1] || '押', R0 * 0.55); b.d.position.y = -R0 * 1.55; group.add(b.d);
+    const chain = new THREE.Mesh(new THREE.BoxGeometry(0.0012, R0 * 0.4, 0.0012), new THREE.MeshBasicMaterial({ color: '#2a2020' })); chain.position.y = -R0 * 1.0; group.add(chain);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: '#5aff7a', transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.setScalar(w * 2.4); group.add(halo);
+  } else if (kind === 'bulbvert') { // 縦長、縁に電球、中は黒地に金の字
+    const c = cv(PW, PH), g = c.getContext('2d');
+    g.fillStyle = '#1a0a0a'; g.fillRect(0, 0, PW, PH);
+    const cs = [...text]; const px = Math.min(PW * 0.75, PH * 0.85 / cs.length);
+    g.font = `${px}px ${JP}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ffcf4a'; g.shadowColor = '#ff8a1a'; g.shadowBlur = px * 0.3;
+    cs.forEach((ch, i) => g.fillText(ch, PW / 2, PH / 2 + (i - (cs.length - 1) / 2) * px));
+    faceMat = new THREE.MeshBasicMaterial({ map: tx(c), toneMapped: false });
+    hit = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.006), [0, 0, 0, 0, 0, 0].map((_, i) => i >= 4 ? faceMat : new THREE.MeshBasicMaterial({ color: '#2a1414' }))); group.add(hit);
+    const pts = []; const step = 0.0055;
+    for (let x = -w / 2; x <= w / 2; x += step) pts.push([x, h / 2, 0.0035], [x, -h / 2, 0.0035]);
+    for (let y = -h / 2 + step; y < h / 2; y += step) pts.push([-w / 2, y, 0.0035], [w / 2, y, 0.0035]);
+    const bulbs = bulbRow(group, pts, '#ffe6a0');
+    const on = new THREE.Color('#fff2b0'), off = new THREE.Color('#6a3a10');
+    update = t => { const s = Math.floor(t * 6); for (let i = 0; i < pts.length; i++) bulbs.setColorAt(i, (i + s) % 4 === 0 ? off : on); bulbs.instanceColor.needsUpdate = true; };
+    update(0);
+  } else if (kind === 'neonicon') { // 絵のネオン：カクテル・星・猫・矢印
+    const which = text;
+    const tube = (pts, col, closed = false) => { const curve = new THREE.CatmullRomCurve3(pts.map(([x, y]) => new THREE.Vector3(x * w, y * h, 0.002)), closed, 'catmullrom', 0.1); group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, pts.length * 8, 0.0014, 6, closed), new THREE.MeshBasicMaterial({ color: col, toneMapped: false }))); };
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: '#100810', transparent: true, opacity: 0.0 })); group.add(back); hit = back; faceMat = back.material;
+    if (which === 'cocktail') { tube([[-0.35, 0.35], [0.35, 0.35], [0, -0.05], [-0.35, 0.35]], color, true); tube([[0, -0.05], [0, -0.38]], color); tube([[-0.18, -0.4], [0.18, -0.4]], color); tube([[0.12, 0.42], [0.3, 0.2]], '#7cff6b'); }
+    else if (which === 'star') { const P = []; for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? 0.2 : 0.45; P.push([Math.cos(a) * rr, Math.sin(a) * rr]); } tube(P, color, true); }
+    else if (which === 'cat') { tube([[-0.3, -0.4], [-0.32, 0.1], [-0.25, 0.4], [-0.1, 0.18], [0.1, 0.18], [0.25, 0.4], [0.32, 0.1], [0.3, -0.4]], color); tube([[-0.3, -0.4], [0.3, -0.4]], color); tube([[-0.14, 0.0], [-0.1, 0.02]], '#7cff6b'); tube([[0.1, 0.02], [0.14, 0.0]], '#7cff6b'); }
+    else { tube([[-0.45, 0], [0.3, 0]], color); tube([[0.1, 0.22], [0.42, 0], [0.1, -0.22]], color); }
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.set(w * 2, h * 2, 1); group.add(halo);
+    let k = rng() * 10; update = t => { group.visible = !(Math.sin(t * 23 + k) > 0.985); };
+  }
+  return { group, hit, faceMat, update };
+}
