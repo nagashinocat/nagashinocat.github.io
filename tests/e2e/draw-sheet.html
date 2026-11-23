@@ -1,0 +1,22 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>draw sheet</title>
+<style>body{background:#222;margin:0;padding:10px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;font:12px sans-serif;color:#ccc}canvas{display:block}</style></head><body>
+<script type="module">
+import { drawFacade, facadeSize } from '../../js/draw/facade.js';
+import { drawSign } from '../../js/draw/sign.js';
+import { drawClutterStrip } from '../../js/draw/clutter.js';
+import { rng } from '../../js/rng.js';
+const add = (w, h, fn) => { const c = document.createElement('canvas'); c.width = w; c.height = h; fn(c); document.body.append(c); };
+let s = 1;
+for (const d of ['games', 'tools', 'wip']) for (let i = 0; i < 4; i++) {
+  const b = { w: [0.14, 0.2, 0.26, 0.3][i], h: d === 'games' ? [1.1, 0.7, 0.45, 1.3][i] : [0.4, 0.3, 0.5, 0.25][i] };
+  const { w, h } = facadeSize(b); add(w, h, c => drawFacade(c, b, d, rng(s++)));
+}
+add(512, 150, c => drawSign(c, { text: '超能力者の証明', color: '#ff2d55', isWork: true, vertical: false }));
+add(512, 150, c => drawSign(c, { text: "while it's raining", color: '#4fd8ff', isWork: true, vertical: false }));
+add(150, 520, c => drawSign(c, { text: '鉛筆削りがなかった僕は、旋盤で削ることにした。', color: '#7cff6b', isWork: true, vertical: true }));
+add(150, 520, c => drawSign(c, { text: 'ちょっと、うちの猫ちゃんを助けてあげて', color: '#ffb21f', isWork: true, vertical: true }));
+add(90, 220, c => drawSign(c, { text: '麻雀', color: '#b46bff', isWork: false, vertical: true }));
+add(200, 90, c => drawSign(c, { text: '酒', color: '#ff3b3b', isWork: false, vertical: false }));
+for (const k of ['duct', 'tube', 'wire']) add(48, 256, c => drawClutterStrip(c, k, rng(s++)));
+document.title = 'ready';
+</script></body></html>
