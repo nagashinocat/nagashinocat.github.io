@@ -41,17 +41,22 @@ const tops = [];
 // 看板の山札：同じ種類×同じ字は二度出さない
 const DECK = (() => {
   const T = {
-    neon: ['酒', '麺', '大東電器', '按摩', '雀荘', '龍華', '夜來香', '金魚', '月光', '紅楼', '天星', '銀河', '酒家', '粥麺', '夜市', '桃源'], lightbox: ['飯店', '薬', '理髪', '歯科', '旅館', '珈琲', '両替', '電器行', '眼鏡', '時計', '写真館', '漢方', '印刷', '洗衣', '五金', '茶餐廳'],
-    marquee: ['BAR', 'OPEN', 'HOT DOG', 'MOTEL', 'CASINO', 'DINER', 'LIQUOR', 'PIZZA', 'TATTOO', 'ARCADE'], round: ['質', '當', '茶', '湯', '福', '寿', '吉', '麺', '酒'], shield: ['ROUTE 66', 'ROUTE 9', 'DINER 24', 'BAR 66'],
-    arrow: ['CAFE', 'EXIT', 'GAS', 'MOTEL'], plank: ['SALOON', 'TRADING', 'GARAGE', 'APACHE'], tin: ['NO PARKING', 'KEEP OUT', 'DANGER HIGH VOLT', 'SMILE ON CAMERA'],
-    pawn: ['押當', '大押'], bulbvert: ['富記', '寶館', '金龍', '萬興'], neonicon: ['cocktail', 'star', 'cat', 'arrow'],
-    cloth: ['大売出', '御休処', '拉麺'], nobori: ['焼鳥', '餃子', '営業中', '甘味'], enamel: ['仁丹', '金鳥', '大學目薬', '牛乳'],
-    letters: ['HOTEL', '大酒店', 'KARAOKE', 'CLUB', '舞庁'], barber: ['理'], led: ['大特価セール', '24時間営業', 'WELCOME'], fan: ['扇屋', '團扇'],
+    neon: ['猫', 'ながしの猫', '猫飯店',  '酒', '麺', '大東電器', '按摩', '雀荘', '龍華', '夜來香', '金魚', '月光', '紅楼', '天星', '銀河', '酒家', '粥麺', '夜市', '桃源'], lightbox: ['猫屋', 'ながしの猫', '飯店', '薬', '理髪', '歯科', '旅館', '珈琲', '両替', '電器行', '眼鏡', '時計', '写真館', '漢方', '印刷', '洗衣', '五金', '茶餐廳'],
+    marquee: ['nagashinocat', 'CAT BAR', 'BAR', 'OPEN', 'HOT DOG', 'MOTEL', 'CASINO', 'DINER', 'LIQUOR', 'PIZZA', 'TATTOO', 'ARCADE'], round: ['猫', '質', '當', '茶', '湯', '福', '寿', '吉', '麺', '酒'], shield: ['ROUTE 66', 'ROUTE 9', 'DINER 24', 'BAR 66'],
+    arrow: ['CAFE', 'EXIT', 'GAS', 'MOTEL'], plank: ['CAT SALOON', 'SALOON', 'TRADING', 'GARAGE', 'APACHE'], tin: ['NO PARKING', 'KEEP OUT', 'DANGER HIGH VOLT', 'SMILE ON CAMERA'],
+    pawn: ['押當', '大押'], bulbvert: ['猫記', '富記', '寶館', '金龍', '萬興'], neonicon: ['cocktail', 'star', 'cat', 'arrow', 'cat'],
+    cloth: ['大売出', '御休処', '拉麺'], nobori: ['猫まんま', '焼鳥', '餃子', '営業中', '甘味'], enamel: ['ながしの猫', '仁丹', '金鳥', '大學目薬', '牛乳'],
+    letters: ['NAGASHINO', 'CAT', 'HOTEL', '大酒店', 'KARAOKE', 'CLUB', '舞庁'], barber: ['理'], led: ['nagashinocat の開発置き場', 'ようこそ ながしの猫へ', '大特価セール', '24時間営業', 'WELCOME'], fan: ['扇屋', '團扇'],
   };
   const d = []; for (const [k, list] of Object.entries(T)) for (const t of list) d.push([k, t]);
   for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(r.next() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
   // 左右で半分ずつ（左右どちらにも看板が付くように）
-  return { '-1': d.filter((_, i) => i % 2 === 0), '1': d.filter((_, i) => i % 2 === 1) };
+  // 猫・ながしの猫・nagashinocat の看板は必ず出す（山札の上に置く）
+  const isCat = ([, t]) => /猫|nagashino|NAGASHINO|CAT|cat/.test(t);
+  const cats = d.filter(isCat), rest = d.filter(x => !isCat(x));
+  const L = rest.filter((_, i) => i % 2 === 0), R = rest.filter((_, i) => i % 2 === 1);
+  cats.forEach((c, i) => (i % 2 ? R : L).push(c));
+  return { '-1': L, '1': R };
 })();
 // 路地の両側の紙の建物
 for (const side of [-1, 1]) {
