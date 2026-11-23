@@ -11,6 +11,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildDiorama } from '../js/scene/diorama.js';
 import { buildAlleyPaper } from '../js/scene/alleypaper.js';
+import { addWhale } from '../js/scene/creatures.js';
 try { await Promise.all(['40px "Dela Gothic One"', '40px "Righteous"', '40px "DotGothic16"'].map(f => document.fonts.load(f))); } catch {}
 const Q = new URLSearchParams(location.search);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -73,6 +74,9 @@ const setGround = u => {
   roll.rotation.x = -(G_LEN * u) / rad * 0.5; // 転がる
 };
 setPop(-1); setGround(0); setBook(0);
+// クジラ：街が立ち上がったあと、タワーのまわりをゆっくり回る
+const whale = await addWhale(D.scene, { length: 0.36, center: [0, 0.74, -0.72], radius: [0.3, 0.3], speed: 0.13, phase0: 2.2 });
+whale.group.visible = false;
 // 机のスタンドの明かり（最初だけ。街が立ち上がると夜になる）
 const lamp = new THREE.SpotLight('#ffd8a0', 9, 7, 0.7, 0.6, 1.0); lamp.position.set(-0.8, 2.2, 1.4); lamp.target.position.set(0, 0, 0); D.scene.add(lamp, lamp.target);
 const fog0 = D.scene.fog ? D.scene.fog.density : 0;
@@ -88,6 +92,7 @@ const K = [ // [時刻, 位置, 注視点, fov]
 ];
 const ease = t => t * t * (3 - 2 * t);
 const clamp01 = x => Math.min(1, Math.max(0, x));
+const smooth01 = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
 // カメラはキーを通るなめらかな曲線の上を、速さが急に変わらないように動く
 const paths = new Map();
 function pathOf(keys) {
@@ -129,7 +134,7 @@ function frame(t) {
   lamp.intensity = 9 * (1 - ease(clamp01((t - 4.8) / 3.2)));
   if (D.scene.fog) D.scene.fog.density = fog0 * (0.25 + 0.75 * ease(clamp01((t - 3.0) / 4.0))); // はじめは霧を薄く、本がよく見えるように
   const k = clamp01((t - T_X) / X_DUR);
-  if (k < 1) { camAt(cam, Math.min(t, K.at(-1)[0]), K); for (const u of D.ups) u && u(t, 1 / 60); }
+  if (k < 1) { camAt(cam, Math.min(t, K.at(-1)[0]), K); for (const u of D.ups) u && u(t, 1 / 60); whale.update(t); const wv = smooth01((t - 8.0) / 1.8); whale.group.visible = wv > 0; whale.group.scale.setScalar(Math.max(1e-3, wv)); }
   if (k > 0) { camAt(camA, t - T_X, KA); for (const u of A.ups) u && u(t); }
   if (k < 1) { renderer.toneMappingExposure = 0.8; compD.render(); }
   if (k > 0) { renderer.toneMappingExposure = 0.72; compA.render(); }

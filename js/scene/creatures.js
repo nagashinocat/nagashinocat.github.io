@@ -50,17 +50,30 @@ function starTexture() {
   starTex = new THREE.CanvasTexture(c); return starTex;
 }
 
-// 影（足もとのぼんやりした楕円）
+// 影：ふちが波打つ液体のような黒い水たまり（ふだんは静かな楕円）
 function shadowMesh() {
-  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
-  const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(0,0,0,0.85)'); gr.addColorStop(0.6, 'rgba(0,0,0,0.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { t: { value: 0 }, wob: { value: 0 }, ink: { value: 0.75 }, stretch: { value: 0 }, shine: { value: 0 } },
+    transparent: true, depthWrite: false,
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+    fragmentShader: `uniform float t, wob, ink, stretch, shine; varying vec2 vUv;
+      void main(){
+        vec2 p = (vUv - .5) * 2.;
+        // 進む向き（+y）へ、しずくのように伸びる
+        p.y -= stretch * .35; p.y /= 1. + stretch * (p.y > 0. ? 1.6 : .4);
+        float a = atan(p.y, p.x), r = length(p);
+        float edge = .62 + wob * (.07 * sin(a * 3. + t * 4.) + .05 * sin(a * 5. - t * 6.3) + .03 * sin(a * 9. + t * 9.));
+        float m = 1. - smoothstep(edge - .18 - .3 * (1. - wob), edge, r);
+        // 液体のつや（ふちの内側に紫の光）
+        float gl = smoothstep(edge - .16, edge - .04, r) * (1. - smoothstep(edge - .04, edge, r)) * shine;
+        gl_FragColor = vec4(vec3(.55, .4, 1.) * gl, m * ink + gl * .6);
+      }` });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
   m.rotation.x = -Math.PI / 2; m.renderOrder = 2; return m;
 }
 
 // ================= 黒猫 =================
-export async function addCat(scene, { height = 0.034, area = { x: [-0.09, 0.09], z: [-0.75, 0.55] }, seed = 1 } = {}) {
+export async function addCat(scene, { height = 0.034, area = { x: [-0.09, 0.09], z: [-0.75, 0.55] }, seed = 1, script = [] } = {}) {
   const g = await loader.loadAsync(ROOT + 'assets/models/cat.glb');
   const model = g.scene; model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; if (o.material) { o.material.roughness = 0.75; rim(o.material, '#a89cff', 1.6); } } });
   const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
@@ -84,8 +97,8 @@ export async function addCat(scene, { height = 0.034, area = { x: [-0.09, 0.09],
   function next(t) {
     const r = rnd();
     if (st.mode === 'walk') {
-      st.mode = r < 0.35 ? 'sit' : r < 0.65 ? 'stretch' : 'sleep';
-      st.dur = { sit: 3 + rnd() * 3, stretch: 3.2, sleep: 8 + rnd() * 6 }[st.mode];
+      st.mode = script.length ? script.shift() : r < 0.35 ? 'sit' : r < 0.65 ? 'stretch' : 'sleep';
+      st.dur = { sit: 3 + rnd() * 3, stretch: 4.2, sleep: 22 + rnd() * 14 }[st.mode];
     } else { st.mode = 'walk'; st.to = pickSpot(); st.dur = 0; }
     st.t0 = t;
   }
@@ -115,12 +128,17 @@ export async function addCat(scene, { height = 0.034, area = { x: [-0.09, 0.09],
     }
     rig.rot('neck1', [1, 0, 0], 0.65 * w);
   }
-  // のび：前足を前へまっすぐ、胸を下げてお尻を上げる
+  // のび：前足を地面にそってぐーっと前へ、胸を地面すれすれまで下げて、お尻としっぽを高く
   function poseStretch(w) {
-    rig.rot('spine2', [1, 0, 0], 0.38 * w); rig.rot('chest', [1, 0, 0], 0.5 * w); rig.rot('spine_04', [1, 0, 0], 0.15 * w);
-    for (const s of ['L', 'R']) { rig.rot(`frontUpr.${s}`, [1, 0, 0], -1.85 * w); rig.rot(`frontLwr.${s}`, [1, 0, 0], 0.15 * w); rig.rot(`rearUpr.${s}`, [1, 0, 0], 0.3 * w); rig.rot(`frontFoot.${s}`, [1, 0, 0], 0.5 * w); }
-    rig.rot('neck1', [1, 0, 0], -0.75 * w); rig.rot('head', [1, 0, 0], -0.25 * w);
-    rig.rot('jaw', [1, 0, 0], 0.35 * w * smooth((w - 0.6) / 0.4)); // あくび
+    rig.rot('hips', [1, 0, 0], 0.42 * w);                       // からだ全体を前のめりに
+    rig.rot('spine2', [1, 0, 0], 0.22 * w); rig.rot('chest', [1, 0, 0], 0.2 * w);
+    for (const s of ['L', 'R']) {
+      rig.rot(`rearUpr.${s}`, [1, 0, 0], -0.32 * w); rig.rot(`rearLwr.${s}`, [1, 0, 0], -0.12 * w); // 後ろ足はまっすぐ立てる
+      rig.rot(`frontUpr.${s}`, [1, 0, 0], -1.55 * w); rig.rot(`frontLwr.${s}`, [1, 0, 0], -0.15 * w); rig.rot(`frontFoot.${s}`, [1, 0, 0], 0.6 * w);
+    }
+    rig.rot('neck1', [1, 0, 0], -0.75 * w); rig.rot('head', [1, 0, 0], -0.3 * w); // 顔は前を向く
+    rig.rot('tail_01', [1, 0, 0], 0.55 * w);                    // しっぽをぴんと上へ
+    rig.rot('jaw', [1, 0, 0], 0.45 * w * smooth((w - 0.55) / 0.45)); // あくび
   }
   // 寝る：足をたたんで、おなかを地面につけて丸くなる
   function poseSleep(w, breath) {
@@ -133,20 +151,42 @@ export async function addCat(scene, { height = 0.034, area = { x: [-0.09, 0.09],
     rig.rot('chest', [1, 0, 0], 0.04 * Math.sin(breath) * w);
     rig.rot('tail_01', [1, 0, 0], -1.0 * w);
   }
-  const bodyDrop = { sit: 0.3, stretch: 0.06, sleep: 0.38 };
+  const bodyDrop = { sit: 0.3, stretch: 0.0, sleep: 0.38 };
 
   let lastT = 0, warp = null;
   function update(t) {
     const dt = Math.min(0.1, Math.max(0, t - lastT)); lastT = t;
     rig.reset();
     let walkW = 0, drop = 0;
-    if (warp) { // 影に溶けて、別の場所の影から出てくる
-      const u = (t - warp.t0) / 2.4;
-      if (u < 0.35) { const v = smooth(u / 0.35); body.scale.set(1 + v * 0.3, 1 - v * 0.98, 1 + v * 0.3); shadow.scale.set(height * (1.4 + v * 0.8), height * (1.9 + v * 0.8), 1); }
-      else if (u < 0.6) { const v = smooth((u - 0.35) / 0.25); body.visible = false; cat.position.lerpVectors(warp.from, warp.to, v); shadow.scale.set(height * 2.2 * (1 - v * 0.6), height * 2.7 * (1 - v * 0.6), 1); }
-      else { const v = smooth((u - 0.6) / 0.4); body.visible = true; cat.position.copy(warp.to); body.scale.set(1.3 - v * 0.3, 0.02 + v * 0.98, 1.3 - v * 0.3); shadow.scale.set(height * (1.4 + (1 - v) * 0.6), height * (1.9 + (1 - v) * 0.6), 1); }
-      poseSit(0.0); poseTail(t, 0);
-      if (u >= 1) { warp = null; body.scale.set(1, 1, 1); st.mode = 'sit'; st.t0 = t; st.dur = 2.5; }
+    const su = shadow.material.uniforms; su.t.value = t;
+    if (warp) { // 液体みたいに影へ溶けて、影ごと流れて、別の場所の影からにゅっと出てくる
+      const u = (t - warp.t0) / 3.0;
+      const dir = Math.atan2(warp.to.x - warp.from.x, warp.to.z - warp.from.z);
+      if (u < 0.32) { // とける：ぷるぷる震えながら沈む
+        const v = smooth(u / 0.32), wig = Math.sin(t * 30) * 0.06 * (1 - v);
+        body.visible = true;
+        body.scale.set(1 + v * 0.5 + wig, Math.max(0.02, 1 - v), 1 + v * 0.5 - wig);
+        body.position.y = -v * v * height * 0.5;
+        su.wob.value = v; su.shine.value = v; su.ink.value = 0.75 + 0.2 * v; su.stretch.value = 0;
+        shadow.scale.set(height * (1.4 + v * 0.9), height * (1.9 + v * 0.6), 1);
+      } else if (u < 0.68) { // 流れる：水たまりが伸び縮みしながら道をすべる
+        const v = smooth((u - 0.32) / 0.36);
+        body.visible = false;
+        cat.position.lerpVectors(warp.from, warp.to, v);
+        st.heading = dir; cat.rotation.y = dir;
+        const sp = Math.sin(v * Math.PI);
+        su.wob.value = 1; su.shine.value = 1; su.ink.value = 0.95; su.stretch.value = sp * 1.2;
+        shadow.scale.set(height * (2.3 - sp * 0.7), height * (2.5 + sp * 0.8), 1);
+      } else { // わき出す：水たまりから盛り上がって猫の形になる
+        const v = smooth((u - 0.68) / 0.32), over = Math.sin(v * Math.PI) * 0.18;
+        body.visible = true; cat.position.copy(warp.to);
+        body.scale.set(1.4 - v * 0.4 - over * 0.5, Math.max(0.02, v + over), 1.4 - v * 0.4 - over * 0.5);
+        body.position.y = -(1 - v) * height * 0.4;
+        su.wob.value = 1 - v; su.shine.value = 1 - v; su.ink.value = 0.95 - 0.2 * v; su.stretch.value = 0;
+        shadow.scale.set(height * (1.4 + (1 - v) * 0.9), height * (1.9 + (1 - v) * 0.6), 1);
+      }
+      poseSit(0); poseTail(t * 2, 0);
+      if (u >= 1) { warp = null; body.scale.set(1, 1, 1); body.position.y = 0; su.wob.value = 0; su.shine.value = 0; su.ink.value = 0.75; st.mode = 'walk'; st.t0 = t; next(t); st.dur = Math.min(st.dur, st.mode === 'sleep' ? 99 : 3); }
     } else {
       const el = t - st.t0;
       if (st.mode === 'walk') {
@@ -169,7 +209,7 @@ export async function addCat(scene, { height = 0.034, area = { x: [-0.09, 0.09],
       }
       cat.rotation.y = st.heading;
     }
-    body.position.y = -drop * height;
+    if (!warp) body.position.y = -drop * height;
     shadow.position.x = cat.position.x; shadow.position.z = cat.position.z; shadow.rotation.z = -cat.rotation.y;
   }
   return {
@@ -188,7 +228,7 @@ export async function addCat(scene, { height = 0.034, area = { x: [-0.09, 0.09],
 }
 
 // ================= 空を泳ぐクジラ =================
-export async function addWhale(scene, { length = 0.4, center = [0, 0.74, -0.85], radius = [0.2, 0.38], speed = 0.09 } = {}) {
+export async function addWhale(scene, { length = 0.4, center = [0, 0.74, -0.85], radius = [0.2, 0.38], speed = 0.09, phase0 = 0 } = {}) {
   const g = await loader.loadAsync(ROOT + 'assets/models/whale.glb');
   const model = g.scene; model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; if (o.material) { o.material.emissive = new THREE.Color('#3a2a7a'); o.material.emissiveIntensity = 0.5; o.material.emissiveMap = o.material.map; } } });
   const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
@@ -224,11 +264,11 @@ export async function addWhale(scene, { length = 0.4, center = [0, 0.74, -0.85],
   const PAL = ['#ff5fd2', '#5fe0ff', '#ffd84f', '#8aff7a', '#b88aff', '#ff8a4f', '#ffffff'].map(h => new THREE.Color(h));
   let spoutT = -99, spoutFrom = new THREE.Vector3(), emitted = 0;
 
-  let lastT = 0, ang = 0;
+  let lastT = 0;
   function update(t) {
     const dt = Math.min(0.1, Math.max(0, t - lastT)); lastT = t;
     // 空をゆっくり大きく回る（少し上下にうねる）
-    ang += dt * speed / ((radius[0] + radius[1]) / 2);
+    const ang = t * speed / ((radius[0] + radius[1]) / 2) + phase0; // 時刻だけで決まる（途中から再生してもずれない）
     const p = (a) => new THREE.Vector3(center[0] + Math.sin(a) * radius[0], center[1] + Math.sin(a * 2) * 0.05, center[2] + Math.cos(a) * radius[1]);
     const here = p(ang), ahead = p(ang + 0.05);
     whale.position.copy(here); whale.lookAt(ahead);

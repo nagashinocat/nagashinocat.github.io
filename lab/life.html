@@ -20,7 +20,7 @@ document.body.append(renderer.domElement);
 const cam = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.005, 30);
 cam.position.set(-0.01, 0.045, 0.66); cam.lookAt(0.03, 0.3, -0.9);
 const A = await buildAlleyPaper();
-const cat = await addCat(A.scene, { height: 0.06, area: { x: [-0.06, 0.06], z: [-0.35, 0.36] }, seed: +(Q.get('seed') || 3) });
+const cat = await addCat(A.scene, { height: 0.045, area: { x: [-0.06, 0.06], z: [-0.4, 0.34] }, seed: +(Q.get('seed') || 3), script: (Q.get('script') || '').split(',').filter(Boolean) });
 // クジラは路地の上の細い夜空を、奥と手前を行き来して泳ぐ
 const whale = await addWhale(A.scene, { length: 0.34, center: [0.01, 0.6, -0.45], radius: [0.06, 0.55], speed: 0.07 });
 const comp = new EffectComposer(renderer); comp.addPass(new RenderPass(A.scene, cam));
