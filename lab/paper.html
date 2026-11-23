@@ -41,16 +41,17 @@ const tops = [];
 // 看板の山札：同じ種類×同じ字は二度出さない
 const DECK = (() => {
   const T = {
-    neon: ['酒', '麺', '大東電器', '按摩', '雀荘', '龍華', '夜來香', '金魚'], lightbox: ['飯店', '薬', '理髪', '歯科', '旅館', '珈琲', '両替', '電器行'],
-    marquee: ['BAR', 'OPEN', 'HOT DOG', 'MOTEL', 'CASINO', 'DINER'], round: ['質', '當', '茶', '湯', '福'], shield: ['ROUTE 66', 'ROUTE 9', 'DINER 24', 'BAR 66'],
+    neon: ['酒', '麺', '大東電器', '按摩', '雀荘', '龍華', '夜來香', '金魚', '月光', '紅楼', '天星', '銀河', '酒家', '粥麺', '夜市', '桃源'], lightbox: ['飯店', '薬', '理髪', '歯科', '旅館', '珈琲', '両替', '電器行', '眼鏡', '時計', '写真館', '漢方', '印刷', '洗衣', '五金', '茶餐廳'],
+    marquee: ['BAR', 'OPEN', 'HOT DOG', 'MOTEL', 'CASINO', 'DINER', 'LIQUOR', 'PIZZA', 'TATTOO', 'ARCADE'], round: ['質', '當', '茶', '湯', '福', '寿', '吉', '麺', '酒'], shield: ['ROUTE 66', 'ROUTE 9', 'DINER 24', 'BAR 66'],
     arrow: ['CAFE', 'EXIT', 'GAS', 'MOTEL'], plank: ['SALOON', 'TRADING', 'GARAGE', 'APACHE'], tin: ['NO PARKING', 'KEEP OUT', 'DANGER HIGH VOLT', 'SMILE ON CAMERA'],
     pawn: ['押當', '大押'], bulbvert: ['富記', '寶館', '金龍', '萬興'], neonicon: ['cocktail', 'star', 'cat', 'arrow'],
     cloth: ['大売出', '御休処', '拉麺'], nobori: ['焼鳥', '餃子', '営業中', '甘味'], enamel: ['仁丹', '金鳥', '大學目薬', '牛乳'],
-    letters: ['HOTEL', '大酒店', 'KARAOKE'], barber: ['理'], led: ['大特価セール', '24時間営業', 'WELCOME'], fan: ['扇屋', '團扇'],
+    letters: ['HOTEL', '大酒店', 'KARAOKE', 'CLUB', '舞庁'], barber: ['理'], led: ['大特価セール', '24時間営業', 'WELCOME'], fan: ['扇屋', '團扇'],
   };
   const d = []; for (const [k, list] of Object.entries(T)) for (const t of list) d.push([k, t]);
   for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(r.next() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
-  return d;
+  // 左右で半分ずつ（左右どちらにも看板が付くように）
+  return { '-1': d.filter((_, i) => i % 2 === 0), '1': d.filter((_, i) => i % 2 === 1) };
 })();
 // 路地の両側の紙の建物
 for (const side of [-1, 1]) {
@@ -63,11 +64,11 @@ for (const side of [-1, 1]) {
     b.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2;
     scene.add(b);
     // 看板・提灯と、その光
-    const nSigns = side < 0 ? r.int(6, 10) : r.int(4, 7);
+    const nSigns = side < 0 ? r.int(5, 8) : r.int(4, 7);
     const occ = [];
     for (let k = 0, tries = 0; k < nSigns && tries < 40; tries++) {
-      if (!DECK.length) break;
-      const [kind, text] = DECK.pop(); const color = r.pick(['#ff4fa3', '#4fd8ff', '#ffb21f', '#b46bff', '#ff3b3b', '#7cff6b']);
+      const deck = DECK[side]; if (!deck.length) break;
+      const [kind, text] = deck.pop(); const color = r.pick(['#ff4fa3', '#4fd8ff', '#ffb21f', '#b46bff', '#ff3b3b', '#7cff6b']);
       const SIZE = { marquee: [0.012 + text.length * 0.007, 0.02], round: [0.04, 0.04], shield: [0.04, 0.045], arrow: [0.07, 0.022], plank: [0.07, 0.025], tin: [0.03, 0.04], pawn: [0.05, 0.05], bulbvert: [0.03, 0.03 + [...text].length * 0.025], neonicon: [0.045, 0.045],
         cloth: [0.03, 0.03 + [...text].length * 0.025], nobori: [0.022, 0.1], enamel: [0.06, 0.024], letters: [0.018 * [...text].length, 0.022], barber: [0.012, 0.05], led: [0.1, 0.014], fan: [0.07, 0.04] };
       const cls = r.next(), k2 = cls < 0.3 ? 0.85 : cls < 0.7 ? 0.62 : 0.42;
@@ -77,7 +78,7 @@ for (const side of [-1, 1]) {
       const y = r.range(0.085, Math.max(0.09, h * 0.85 - size[1])), zz = z - d * r.range(0.1, 0.9);
       const flat = ['plank', 'tin', 'arrow', 'enamel', 'letters', 'fan', 'led'].includes(kind) ? r.next() < 0.75 : kind === 'barber' ? true : r.next() < 0.2;
       const half = flat ? Math.max(size[0], 0.01) / 2 : 0.008;
-      if (occ.some(o => Math.abs(o.z - zz) < o.hz + half + 0.004 && Math.abs(o.y - y) < o.hy + size[1] / 2 + 0.004)) { DECK.unshift([kind, text]); continue; }
+      if (occ.some(o => Math.abs(o.z - zz) < o.hz + half + 0.004 && Math.abs(o.y - y) < o.hy + size[1] / 2 + 0.004)) { deck.unshift([kind, text]); continue; }
       occ.push({ z: zz, y, hz: half, hy: size[1] / 2 });
       k++;
       const sg = make();
