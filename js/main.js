@@ -168,9 +168,9 @@ async function startCity(works) {
   addEventListener('keydown', e => { if (!$('list').hidden) return; if (e.key === 'ArrowRight') turn(1); if (e.key === 'ArrowLeft') turn(-1); });
   setLabel('games');
 
-  await book.open();
   $('loading').classList.add('done');
   setTimeout(() => $('loading').remove(), 700);
+  await book.open();
   $('turn').hidden = false;
   hint.textContent = coarse ? '看板をタップ → もう一度タップであそぶ' : '看板にカーソル → クリックであそぶ';
   hint.hidden = false;
