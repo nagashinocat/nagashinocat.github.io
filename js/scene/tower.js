@@ -31,7 +31,7 @@ export function roundTower({ R = 0.12, H = 1.05, screenTex, rng = Math.random } 
   const L = new THREE.PointLight('#c04fff', 0.6, 1.4, 2); L.position.set(0, sy, R + 0.3); g.add(L);
   const beam = new THREE.MeshBasicMaterial({ color: '#8fc8ff', transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
   const beams = [];
-  for (const [sx, a] of [[-1, 0.55], [-1, 0.2], [1, 0.2], [1, 0.55]]) { const p = new THREE.Group(); p.position.set(sx * R * 0.5, H + 0.05, 0); const cn = new THREE.Mesh(new THREE.ConeGeometry(0.12, 3, 12, 1, true), beam); cn.position.y = 1.5; cn.rotation.z = Math.PI; p.add(cn); g.add(p); beams.push([p, sx, a]); }
+  for (const [sx, a] of [[-1, 0.55], [-1, 0.2], [1, 0.2], [1, 0.55]]) { const p = new THREE.Group(); p.userData.noReflect = true; p.position.set(sx * R * 0.5, H + 0.05, 0); const cn = new THREE.Mesh(new THREE.ConeGeometry(0.12, 3, 12, 1, true), beam); cn.position.y = 1.5; cn.rotation.z = Math.PI; p.add(cn); g.add(p); beams.push([p, sx, a]); }
   const update = tt => { for (const [p, sx, a] of beams) p.rotation.z = -sx * (a + Math.sin(tt * 0.4 + a * 7) * 0.08); for (const u of ups) u(tt); };
   update(0.4);
   return { group: g, screen, update };

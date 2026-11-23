@@ -43,7 +43,7 @@ const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; 
   const cover = new THREE.MeshStandardMaterial({ color: '#5a1424', roughness: 0.8 }), paper = new THREE.MeshStandardMaterial({ color: '#d8ccb4', roughness: 1 });
   for (const s of [-1, 1]) {
     const cv0 = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.02, 1.62), cover); cv0.position.set(s * 0.58, -0.03, 0); scene.add(cv0);
-    const pg = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.025, 1.56), paper); pg.position.set(s * 0.56, -0.008, 0); pg.rotation.z = s * -0.015; scene.add(pg);
+    const pg = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.025, 1.56), paper); pg.position.set(s * 0.56, -0.008, 0); scene.add(pg);
   }
 }
 // ---- 夜空の書き割り（本の奥に立つ紙）：月・雲・遠くの高層ビル群 ----
@@ -66,6 +66,8 @@ const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; 
   top.rotation.x = -Math.PI / 2; top.position.y = 0.012; scene.add(top);
   const mirror = new Reflector(new THREE.PlaneGeometry(2.1, 1.5), { textureWidth: 1024, textureHeight: 768, color: 0x6a5a78 });
   mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0.011; if (!location.search.includes('nomirror')) scene.add(mirror);
+  // サーチライトは水面に映さない（道路の線のように見えるため）
+  const orb = mirror.onBeforeRender; mirror.onBeforeRender = function (...a) { const hid = []; scene.traverse(o => { if (o.userData.noReflect && o.visible) { o.visible = false; hid.push(o); } }); orb.apply(this, a); hid.forEach(o => o.visible = true); };
   // 大通りの路面：濡れたアスファルトを少し透かす（空が映りすぎないように）
   const [ac, ag] = cv(64, 512); ag.fillStyle = 'rgba(26,18,30,0.86)'; ag.fillRect(0, 0, 64, 512);
   ag.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 30; i++) { const x = Math.random() * 64, y = Math.random() * 512, rr = 4 + Math.random() * 14; const gr = ag.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, 'rgba(0,0,0,0.7)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); ag.fillStyle = gr; ag.fillRect(x - rr, y - rr, rr * 2, rr * 2); }
