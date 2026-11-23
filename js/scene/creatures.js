@@ -159,34 +159,36 @@ export async function addCat(scene, { height = 0.034, area = { x: [-0.09, 0.09],
     rig.reset();
     let walkW = 0, drop = 0;
     const su = shadow.material.uniforms; su.t.value = t;
-    if (warp) { // 液体みたいに影へ溶けて、影ごと流れて、別の場所の影からにゅっと出てくる
-      const u = (t - warp.t0) / 3.0;
-      const dir = Math.atan2(warp.to.x - warp.from.x, warp.to.z - warp.from.z);
-      if (u < 0.32) { // とける：ぷるぷる震えながら沈む
-        const v = smooth(u / 0.32), wig = Math.sin(t * 30) * 0.06 * (1 - v);
+    if (warp) { // ゆっくりドロッと溶けて水たまりになり、地面に吸い込まれて消える → 別の場所でしみ出して、そこから出てくる
+      const e = t - warp.t0, H = height;
+      const ease = x => { x = clamp01(x); return x < 0.5 ? 2 * x * x : 1 - (-2 * x + 2) ** 2 / 2; };
+      const puddle = (sx, sz, wob, ink, shine) => { shadow.visible = sx > 0.01; shadow.scale.set(H * sx, H * sz, 1); su.wob.value = wob; su.ink.value = ink; su.shine.value = shine; su.stretch.value = 0; };
+      if (e < 2.6) { // とける：上からゆっくりたれて、横にどろっと広がる
+        const v = ease(e / 2.6), sag = Math.sin(t * 2.2) * 0.05 * v * (1 - v);
         body.visible = true;
-        body.scale.set(1 + v * 0.5 + wig, Math.max(0.02, 1 - v), 1 + v * 0.5 - wig);
-        body.position.y = -v * v * height * 0.5;
-        su.wob.value = v; su.shine.value = v; su.ink.value = 0.75 + 0.2 * v; su.stretch.value = 0;
-        shadow.scale.set(height * (1.4 + v * 0.9), height * (1.9 + v * 0.6), 1);
-      } else if (u < 0.68) { // 流れる：水たまりが伸び縮みしながら道をすべる
-        const v = smooth((u - 0.32) / 0.36);
+        body.scale.set(1 + 0.7 * v + sag, Math.max(0.02, 1 - v ** 1.3), 1 + 0.7 * v - sag);
+        body.position.y = -H * 0.25 * v * v;
+        puddle(1.4 + 1.3 * v, 1.9 + 0.9 * v, 0.4 + 0.6 * v, 0.75 + 0.2 * v, v);
+      } else if (e < 3.8) { // 吸い込まれる：水たまりが真ん中へすぼまって、地面にしみこむ
+        const v = ease((e - 2.6) / 1.2);
         body.visible = false;
-        cat.position.lerpVectors(warp.from, warp.to, v);
-        st.heading = dir; cat.rotation.y = dir;
-        const sp = Math.sin(v * Math.PI);
-        su.wob.value = 1; su.shine.value = 1; su.ink.value = 0.95; su.stretch.value = sp * 1.2;
-        shadow.scale.set(height * (2.3 - sp * 0.7), height * (2.5 + sp * 0.8), 1);
-      } else { // わき出す：水たまりから盛り上がって猫の形になる
-        const v = smooth((u - 0.68) / 0.32), over = Math.sin(v * Math.PI) * 0.18;
-        body.visible = true; cat.position.copy(warp.to);
-        body.scale.set(1.4 - v * 0.4 - over * 0.5, Math.max(0.02, v + over), 1.4 - v * 0.4 - over * 0.5);
-        body.position.y = -(1 - v) * height * 0.4;
-        su.wob.value = 1 - v; su.shine.value = 1 - v; su.ink.value = 0.95 - 0.2 * v; su.stretch.value = 0;
-        shadow.scale.set(height * (1.4 + (1 - v) * 0.9), height * (1.9 + (1 - v) * 0.6), 1);
+        puddle(2.7 * (1 - v), 2.8 * (1 - v), 1, 0.95 * (1 - v * 0.5), 1 - v);
+      } else if (e < 4.5) { // 何もない間
+        shadow.visible = false; body.visible = false; cat.position.copy(warp.to);
+      } else if (e < 5.6) { // しみ出す：別の場所の地面から黒い水たまりがにじんで広がる
+        const v = ease((e - 4.5) / 1.1);
+        shadow.visible = true; cat.position.copy(warp.to);
+        puddle(2.7 * v, 2.8 * v, 1, 0.5 + 0.45 * v, v);
+      } else { // 出てくる：水たまりからゆっくり盛り上がって猫になる
+        const v = ease((e - 5.6) / 1.8), over = Math.sin(v * Math.PI) * 0.12;
+        body.visible = true;
+        body.scale.set(1.6 - 0.6 * v - over * 0.4, Math.max(0.02, v + over), 1.6 - 0.6 * v - over * 0.4);
+        body.position.y = -H * 0.25 * (1 - v) ** 2;
+        puddle(1.4 + 1.3 * (1 - v), 1.9 + 0.9 * (1 - v), 1 - v * 0.9, 0.95 - 0.2 * v, 1 - v);
       }
+      const u = e / 7.4;
       poseSit(0); poseTail(t * 2, 0);
-      if (u >= 1) { warp = null; body.scale.set(1, 1, 1); body.position.y = 0; su.wob.value = 0; su.shine.value = 0; su.ink.value = 0.75; st.mode = 'walk'; st.t0 = t; next(t); st.dur = Math.min(st.dur, st.mode === 'sleep' ? 99 : 3); }
+      if (u >= 1) { warp = null; body.scale.set(1, 1, 1); body.position.y = 0; su.wob.value = 0; su.shine.value = 0; su.ink.value = 0.75; shadow.visible = true; st.mode = 'walk'; st.t0 = t; next(t); st.dur = Math.min(st.dur, st.mode === 'sleep' ? 99 : 3); }
     } else {
       const el = t - st.t0;
       if (st.mode === 'walk') {

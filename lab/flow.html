@@ -75,7 +75,7 @@ const setGround = u => {
 };
 setPop(-1); setGround(0); setBook(0);
 // クジラ：街が立ち上がったあと、タワーのまわりをゆっくり回る
-const whale = await addWhale(D.scene, { length: 0.36, center: [0, 0.74, -0.72], radius: [0.3, 0.3], speed: 0.13, phase0: 2.2 });
+const whale = await addWhale(D.scene, { length: 0.32, center: [0, 0.93, -0.38], radius: [0.38, 0.15], speed: 0.13, phase0: 2.2 });
 whale.group.visible = false;
 // 机のスタンドの明かり（最初だけ。街が立ち上がると夜になる）
 const lamp = new THREE.SpotLight('#ffd8a0', 9, 7, 0.7, 0.6, 1.0); lamp.position.set(-0.8, 2.2, 1.4); lamp.target.position.set(0, 0, 0); D.scene.add(lamp, lamp.target);
