@@ -31,11 +31,21 @@ const mix = new THREE.ShaderMaterial({ uniforms: { a: { value: null }, b: { valu
 const qScene = new THREE.Scene(), qCam = new THREE.Camera(); qScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mix));
 function out(a, b, k) { mix.uniforms.a.value = a.readBuffer.texture; mix.uniforms.b.value = b.readBuffer.texture; mix.uniforms.k.value = k; renderer.setRenderTarget(null); const tm = renderer.toneMapping; renderer.toneMapping = THREE.NoToneMapping; renderer.render(qScene, qCam); renderer.toneMapping = tm; }
 
-// ---- 飛び出す準備：立っているものを集める ----
+// ---- 閉じた本：左半分（表紙＋左のページ）を背の所で右へ折り重ねておく ----
+const spine = new THREE.Group(); spine.position.set(0, 0.012, 0); D.scene.add(spine);
+for (const o of [D.book.covers[-1], D.book.pages[-1]]) { o.position.y -= 0.012; spine.add(o); }
+// ページのふち（紙の束が見えるように）
+{ const edge = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.03, 1.56), new THREE.MeshStandardMaterial({ color: '#cfc2a6', roughness: 1 })); edge.position.set(0.56, 0.0, 0); edge.visible = false; D.scene.add(edge); spine.userData.edge = edge; }
+const setBook = u => { // u: 0 閉じている → 1 開ききる
+  spine.rotation.z = -Math.PI * (1 - u);
+  spine.userData.edge.visible = u < 0.02;
+};
+
+// ---- 飛び出す準備：本と机と地面以外は、ぜんぶ下から立ち上がる ----
+const fixed = new Set([D.book.desk, D.book.covers[1], D.book.pages[1], spine, spine.userData.edge, D.sides[-1].outer, D.sides[1].outer, ...D.ground]);
 const pops = [];
-const flatOrSmall = o => { const b = new THREE.Box3().setFromObject(o); return (b.max.y - b.min.y) < 0.04; };
 for (const sd of [-1, 1]) for (const o of D.sides[sd].inner.children) pops.push(o);
-for (const o of D.scene.children) { if (o === D.sides[-1].outer || o === D.sides[1].outer || o.isLight || flatOrSmall(o)) continue; pops.push(o); }
+for (const o of D.scene.children) { if (fixed.has(o) || o.isLight || o.isCamera) continue; pops.push(o); }
 const base = new Map(pops.map(o => [o, o.scale.clone()]));
 // 遅れ：奥・中央から先に、手前・外へ
 const delayOf = o => { const p = new THREE.Vector3(); o.getWorldPosition(p); return Math.max(0, (p.z + 0.9) * 0.9 + Math.abs(p.x) * 0.6); };
@@ -48,15 +58,12 @@ const backOut = x => { const c1 = 1.3, c3 = c1 + 1; return 1 + c3 * (x - 1) ** 3
 // のび方も、ゆっくり持ち上がってから勢いよく（少し行き過ぎて戻る）
 const grow = x => x < 0.5 ? 0.3 * (x / 0.5) ** 2 : 0.3 + 0.7 * backOut((x - 0.5) / 0.5);
 const setPop = t => { for (const o of pops) { const d = delays.get(o); const x = Math.min(1, Math.max(0, (t - d) / durOf(d))); const k = x <= 0 ? 0.0001 : grow(x); const s0 = base.get(o); o.scale.set(s0.x, s0.y * k, s0.z); o.visible = x > 0; } };
-setPop(-1);
-// 本の表紙（右半分が閉じた状態から開く）
-const coverPivot = new THREE.Group(); coverPivot.position.set(0, -0.02, 0);
-const cover = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.022, 1.62), new THREE.MeshStandardMaterial({ color: '#5a1424', roughness: 0.8 }));
-cover.position.x = 0.58; coverPivot.add(cover);
-const deco = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.3), new THREE.MeshStandardMaterial({ color: '#c8a24a', metalness: 0.6, roughness: 0.4, transparent: true, opacity: 0.25 })); deco.rotation.x = -Math.PI / 2; deco.position.set(0.58, 0.012, 0); coverPivot.add(deco);
-D.scene.add(coverPivot);
+// 地面：本が開いてから、背の所からインクがにじむように広がる
+const gBase = new Map(D.ground.map(o => [o, o.scale.clone()]));
+const setGround = u => { for (const o of D.ground) { const s0 = gBase.get(o); const kx = Math.max(1e-4, Math.min(1, u * 1.25)), ky = Math.max(1e-4, u); o.scale.set(s0.x * kx, s0.y * ky, s0.z); o.visible = u > 0; } };
+setPop(-1); setGround(0); setBook(0);
 // 机のスタンドの明かり（最初だけ。街が立ち上がると夜になる）
-const lamp = new THREE.SpotLight('#ffd8a0', 22, 7, 0.7, 0.6, 1.0); lamp.position.set(-0.8, 2.2, 1.4); lamp.target.position.set(0, 0, 0); D.scene.add(lamp, lamp.target);
+const lamp = new THREE.SpotLight('#ffd8a0', 9, 7, 0.7, 0.6, 1.0); lamp.position.set(-0.8, 2.2, 1.4); lamp.target.position.set(0, 0, 0); D.scene.add(lamp, lamp.target);
 const fog0 = D.scene.fog ? D.scene.fog.density : 0;
 
 // ---- カメラの道すじ ----
@@ -70,13 +77,30 @@ const K = [ // [時刻, 位置, 注視点, fov]
 ];
 const ease = t => t * t * (3 - 2 * t);
 const clamp01 = x => Math.min(1, Math.max(0, x));
+// カメラはキーを通るなめらかな曲線の上を、速さが急に変わらないように動く
+const paths = new Map();
+function pathOf(keys) {
+  if (paths.has(keys)) return paths.get(keys);
+  const V = a => new THREE.Vector3(...a);
+  const pc = new THREE.CatmullRomCurve3(keys.map(k => V(k[1])), false, 'centripetal');
+  const lc = new THREE.CatmullRomCurve3(keys.map(k => V(k[2])), false, 'centripetal');
+  // 時刻→キー番号を、傾きがなめらかにつながる3次で（単調）
+  const T = keys.map(k => k[0]), n = T.length, m = [];
+  const sl = i => 1 / (T[i + 1] - T[i]);
+  for (let i = 0; i < n; i++) m.push(i === 0 ? (keys.moveStart ? sl(0) : 0) : i === n - 1 ? (keys.moveEnd ? sl(n - 2) : 0) : 2 / (1 / sl(i - 1) + 1 / sl(i)));
+  const P = { pc, lc, T, m }; paths.set(keys, P); return P;
+}
 function camAt(c, t, keys) {
-  let i = 0; while (i < keys.length - 2 && t > keys[i + 1][0]) i++;
-  const [t0, p0, l0, f0] = keys[i], [t1, p1, l1, f1] = keys[i + 1];
-  // 途中の区間は止まらず流れるよう線形、最初と最後だけゆるめる
-  const r = clamp01((t - t0) / (t1 - t0)); const u = i === 0 ? ease(r) : (i === keys.length - 2 ? 1 - (1 - r) ** 2 : r);
-  const lerp = (a, b) => a.map((v, k) => v + (b[k] - v) * u);
-  c.position.set(...lerp(p0, p1)); c.lookAt(new THREE.Vector3(...lerp(l0, l1))); c.fov = f0 + (f1 - f0) * u; c.aspect = innerWidth / innerHeight; c.updateProjectionMatrix();
+  const { pc, lc, T, m } = pathOf(keys), n = T.length;
+  t = Math.min(T[n - 1], Math.max(0, t));
+  let i = 0; while (i < n - 2 && t > T[i + 1]) i++;
+  const h = T[i + 1] - T[i], x = (t - T[i]) / h;
+  const h00 = 2 * x ** 3 - 3 * x ** 2 + 1, h10 = x ** 3 - 2 * x ** 2 + x, h01 = -2 * x ** 3 + 3 * x ** 2, h11 = x ** 3 - x ** 2;
+  const idx = h00 * i + h10 * h * m[i] + h01 * (i + 1) + h11 * h * m[i + 1];
+  const u = Math.min(1, Math.max(0, idx / (n - 1)));
+  c.position.copy(pc.getPoint(u)); c.lookAt(lc.getPoint(u));
+  const fi = Math.min(n - 2, Math.floor(idx)), fr = idx - fi; c.fov = keys[fi][3] + (keys[fi + 1][3] - keys[fi][3]) * fr;
+  c.aspect = innerWidth / innerHeight; c.updateProjectionMatrix();
 }
 // 路地：大通りの続きとして、タワーを見たまま前へ進み続ける
 const KA = [
@@ -84,13 +108,14 @@ const KA = [
   [2.0, [0, 0.055, 1.0], [0, 0.34, -1.0], 61],
   [4.6, [-0.01, 0.045, 0.66], [0.03, 0.3, -0.9], 58],
 ];
+K.moveEnd = true; KA.moveStart = true; // つなぎ目で止まらない
 const T_X = 13.6, X_DUR = 1.6; // 大通りと路地が溶け合う時間
 function frame(t) {
-  const oc = clamp01((t - 0.6) / 3.2); // 表紙はゆっくり開く
-  coverPivot.rotation.z = Math.PI * (1 - (oc < 0.5 ? 4 * oc ** 3 : 1 - (-2 * oc + 2) ** 3 / 2));
-  coverPivot.visible = coverPivot.rotation.z > 0.02;
-  setPop(t - 3.2);
-  lamp.intensity = 22 * (1 - ease(clamp01((t - 4.8) / 3.2)));
+  const oc = clamp01((t - 0.8) / 3.2); // 閉じた本がゆっくり開く
+  setBook(oc < 0.5 ? 4 * oc ** 3 : 1 - (-2 * oc + 2) ** 3 / 2);
+  setGround(ease(clamp01((t - 3.6) / 1.8)));
+  setPop(t - 4.2);
+  lamp.intensity = 9 * (1 - ease(clamp01((t - 4.8) / 3.2)));
   if (D.scene.fog) D.scene.fog.density = fog0 * (0.25 + 0.75 * ease(clamp01((t - 3.0) / 4.0))); // はじめは霧を薄く、本がよく見えるように
   const k = clamp01((t - T_X) / X_DUR);
   if (k < 1) { camAt(cam, Math.min(t, K.at(-1)[0]), K); for (const u of D.ups) u && u(t, 1 / 60); }

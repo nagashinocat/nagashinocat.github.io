@@ -24,15 +24,16 @@ const P = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SR
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; };
 
 // ---- 机と開いた本 ----
+const BOOK = { desk: null, covers: {}, pages: {} }, GROUND = [];
 {
   const [c, g] = cv(512, 512); g.fillStyle = '#2a1810'; g.fillRect(0, 0, 512, 512);
   for (let i = 0; i < 80; i++) { g.strokeStyle = `rgba(90,55,30,${Math.random() * 0.5})`; g.lineWidth = 1 + Math.random() * 2; g.beginPath(); const y = Math.random() * 512; g.moveTo(0, y); g.bezierCurveTo(170, y + 8, 340, y - 8, 512, y + 4); g.stroke(); }
   const t = P(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 4);
-  const d = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.MeshStandardMaterial({ map: t, roughness: 0.7 })); d.rotation.x = -Math.PI / 2; d.position.y = -0.04; scene.add(d);
+  const d = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.MeshStandardMaterial({ map: t, roughness: 0.7 })); d.rotation.x = -Math.PI / 2; d.position.y = -0.04; scene.add(d); BOOK.desk = d;
   const cover = new THREE.MeshStandardMaterial({ color: '#5a1424', roughness: 0.8 }), paper = new THREE.MeshStandardMaterial({ color: '#d8ccb4', roughness: 1 });
   for (const s of [-1, 1]) {
-    const cv0 = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.02, 1.62), cover); cv0.position.set(s * 0.58, -0.03, 0); scene.add(cv0);
-    const pg = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.025, 1.56), paper); pg.position.set(s * 0.56, -0.008, 0); scene.add(pg);
+    const cv0 = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.02, 1.62), cover); cv0.position.set(s * 0.58, -0.03, 0); scene.add(cv0); BOOK.covers[s] = cv0;
+    const pg = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.025, 1.56), paper); pg.position.set(s * 0.56, -0.008, 0); scene.add(pg); BOOK.pages[s] = pg;
   }
 }
 // ---- 夜空の書き割り（本の奥に立つ紙）：月・雲・遠くの高層ビル群 ----
@@ -49,18 +50,18 @@ const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; 
 }
 // ---- 地面（濡れた路面と、手前の空き地） ----
 {
-  const under = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.6), new THREE.MeshStandardMaterial({ color: '#1a1420', roughness: 1 })); under.rotation.x = -Math.PI / 2; under.position.y = 0.009; scene.add(under);
+  const under = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.6), new THREE.MeshStandardMaterial({ color: '#1a1420', roughness: 1 })); under.rotation.x = -Math.PI / 2; under.position.y = 0.009; scene.add(under); GROUND.push(under);
   const gt = groundTextures(r, 2.1, 1.5);
   const top = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshStandardMaterial({ map: gt.top, transparent: true, depthWrite: false, roughness: 0.6 }));
-  top.rotation.x = -Math.PI / 2; top.position.y = 0.012; scene.add(top);
+  top.rotation.x = -Math.PI / 2; top.position.y = 0.012; scene.add(top); GROUND.push(top);
   const mirror = new Reflector(new THREE.PlaneGeometry(2.1, 1.5), { textureWidth: 1024, textureHeight: 768, color: 0x6a5a78 });
-  mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0.011; if (!location.search.includes('nomirror')) scene.add(mirror);
+  mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0.011; if (!location.search.includes('nomirror')) { scene.add(mirror); GROUND.push(mirror); }
   // サーチライトは水面に映さない（道路の線のように見えるため）
   const orb = mirror.onBeforeRender; mirror.onBeforeRender = function (...a) { const hid = []; scene.traverse(o => { if (o.userData.noReflect && o.visible) { o.visible = false; hid.push(o); } }); orb.apply(this, a); hid.forEach(o => o.visible = true); };
   // 大通りの路面：濡れたアスファルトを少し透かす（空が映りすぎないように）
   const [ac, ag] = cv(64, 512); ag.fillStyle = 'rgba(26,18,30,0.86)'; ag.fillRect(0, 0, 64, 512);
   ag.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 30; i++) { const x = Math.random() * 64, y = Math.random() * 512, rr = 4 + Math.random() * 14; const gr = ag.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, 'rgba(0,0,0,0.7)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); ag.fillStyle = gr; ag.fillRect(x - rr, y - rr, rr * 2, rr * 2); }
-  const ave = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshBasicMaterial({ map: P(ac), transparent: true, depthWrite: false, opacity: 0.7 })); ave.rotation.x = -Math.PI / 2; ave.position.set(0, 0.0125, 0); scene.add(ave);
+  const ave = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshBasicMaterial({ map: P(ac), transparent: true, depthWrite: false, opacity: 0.7 })); ave.rotation.x = -Math.PI / 2; ave.position.set(0, 0.0125, 0); scene.add(ave); GROUND.push(ave);
 }
 
 const AX = 0.075; // 真ん中の大通りの半幅
@@ -219,5 +220,5 @@ for (let i = 0; i < 16; i++) {
   for (let i = 0; i < 26; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: st, transparent: true, opacity: 0.3, depthWrite: false })); const side = r.pick([-1, 1]); s.position.set(side * r.range(0.2, 1.0), r.range(0.03, 0.12), r.range(-0.1, 0.25)); s.scale.setScalar(r.range(0.12, 0.3)); scene.add(s); }
 }
 
-return { scene, ups, sides: SIDE, B };
+return { scene, ups, sides: SIDE, B, book: BOOK, ground: GROUND };
 }
