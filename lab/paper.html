@@ -40,23 +40,19 @@ const ALLEY = 0.26;
 const tops = [];
 // 看板の山札：同じ種類×同じ字は二度出さない
 const DECK = (() => {
+  // 看板の文字は「猫」「ながしの猫」「nagashinocat」だけ
+  const N3 = ['猫', 'ながしの猫', 'nagashinocat'];
   const T = {
-    neon: ['猫', 'ながしの猫', '猫飯店',  '酒', '麺', '大東電器', '按摩', '雀荘', '龍華', '夜來香', '金魚', '月光', '紅楼', '天星', '銀河', '酒家', '粥麺', '夜市', '桃源'], lightbox: ['猫屋', 'ながしの猫', '飯店', '薬', '理髪', '歯科', '旅館', '珈琲', '両替', '電器行', '眼鏡', '時計', '写真館', '漢方', '印刷', '洗衣', '五金', '茶餐廳'],
-    marquee: ['nagashinocat', 'CAT BAR', 'BAR', 'OPEN', 'HOT DOG', 'MOTEL', 'CASINO', 'DINER', 'LIQUOR', 'PIZZA', 'TATTOO', 'ARCADE'], round: ['猫', '質', '當', '茶', '湯', '福', '寿', '吉', '麺', '酒'], shield: ['ROUTE 66', 'ROUTE 9', 'DINER 24', 'BAR 66'],
-    arrow: ['CAFE', 'EXIT', 'GAS', 'MOTEL'], plank: ['CAT SALOON', 'SALOON', 'TRADING', 'GARAGE', 'APACHE'], tin: ['NO PARKING', 'KEEP OUT', 'DANGER HIGH VOLT', 'SMILE ON CAMERA'],
-    pawn: ['押當', '大押'], bulbvert: ['猫記', '富記', '寶館', '金龍', '萬興'], neonicon: ['cocktail', 'star', 'cat', 'arrow', 'cat'],
-    cloth: ['大売出', '御休処', '拉麺'], nobori: ['猫まんま', '焼鳥', '餃子', '営業中', '甘味'], enamel: ['ながしの猫', '仁丹', '金鳥', '大學目薬', '牛乳'],
-    letters: ['NAGASHINO', 'CAT', 'HOTEL', '大酒店', 'KARAOKE', 'CLUB', '舞庁'], barber: ['理'], led: ['nagashinocat の開発置き場', 'ようこそ ながしの猫へ', '大特価セール', '24時間営業', 'WELCOME'], fan: ['扇屋', '團扇'],
+    neon: N3, lightbox: N3, marquee: ['nagashinocat', 'ながしの猫', '猫'], round: ['猫'], shield: ['nagashinocat 猫', 'ながしの猫 猫'],
+    arrow: N3, plank: N3, tin: ['nagashinocat', 'ながしの猫'], pawn: ['猫猫'], bulbvert: ['猫', 'ながしの猫'], neonicon: ['cat', 'cat', 'star', 'cocktail'],
+    cloth: ['猫', 'ながしの猫'], nobori: ['猫', 'ながしの猫'], enamel: N3, letters: ['nagashinocat', '猫', 'ながしの猫'], barber: ['猫'], led: ['nagashinocat ＊ ながしの猫 ＊ 猫'], fan: ['猫'],
   };
   const d = []; for (const [k, list] of Object.entries(T)) for (const t of list) d.push([k, t]);
   for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(r.next() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
   // 左右で半分ずつ（左右どちらにも看板が付くように）
-  // 猫・ながしの猫・nagashinocat の看板は必ず出す（山札の上に置く）
-  const isCat = ([, t]) => /猫|nagashino|NAGASHINO|CAT|cat/.test(t);
-  const cats = d.filter(isCat), rest = d.filter(x => !isCat(x));
-  const L = rest.filter((_, i) => i % 2 === 0), R = rest.filter((_, i) => i % 2 === 1);
-  cats.forEach((c, i) => (i % 2 ? R : L).push(c));
-  return { '-1': L, '1': R };
+  // 左右それぞれに全部の組み合わせを1枚ずつ（同じ側では被らない）
+  const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r.next() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  return { '-1': shuffle(d), '1': shuffle(d) };
 })();
 // 路地の両側の紙の建物
 for (const side of [-1, 1]) {
@@ -106,7 +102,7 @@ for (const side of [-1, 1]) {
     // 低い建物の屋上に大きな看板
     if (side > 0 && h < 0.35 && r.next() < 0.6) {
       const kind = r.pick(['bulbvert', 'lightbox', 'marquee', 'neon']);
-      const text = kind === 'marquee' ? r.pick(['CASINO', 'HOTEL', 'DINER']) : r.pick(['金龍大酒樓', '大東電器', '富記', '萬興樓']);
+      const text = kind === 'marquee' ? 'nagashinocat' : r.pick(['猫', 'ながしの猫']);
       const size = kind === 'marquee' ? [0.14, 0.05] : kind === 'bulbvert' ? [0.04, 0.03 + [...text].length * 0.03] : [0.16, 0.05];
       const sg = kind === 'bulbvert' ? makeSign2(kind, text, r.pick(['#ffb21f', '#ff4fa3']), size, { rng: () => r.next() }) : makeSign(kind, text, r.pick(['#ff4fa3', '#4fd8ff', '#ffb21f']), size, { vertical: size[1] > size[0], rng: () => r.next() });
       if (sg.update) ups.push(sg.update);
@@ -168,7 +164,7 @@ for (const side of [-1, 1]) {
   scr.position.set(0, 0.95, -0.894); scene.add(scr);
   const fr = new THREE.Mesh(new THREE.PlaneGeometry(0.38, 0.2225), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.6, 1.5), toneMapped: false })); fr.position.set(0, 0.95, -0.8945); scene.add(fr);
   const sl = new THREE.PointLight('#ff6ab8', 0.2, 0.9, 2); sl.position.set(0, 0.95, -0.8); scene.add(sl);
-  const s = makeSign('neon', '開発街', '#ff3b6a', [0.3, 0.09], { rng: () => r.next() }); s.group.position.set(0, 1.17, -0.893); scene.add(s.group);
+  const s = makeSign('neon', 'ながしの猫', '#ff3b6a', [0.3, 0.09], { rng: () => r.next() }); s.group.position.set(0, 1.17, -0.893); scene.add(s.group);
   const beam = new THREE.MeshBasicMaterial({ color: '#9fd8ff', transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
   for (const sx of [-1, 1]) { const p = new THREE.Group(); p.position.set(sx * 0.18, 1.5, -1.0); const c = new THREE.Mesh(new THREE.ConeGeometry(0.25, 3, 16, 1, true), beam); c.position.y = 1.5; c.rotation.z = Math.PI; p.add(c); p.rotation.z = -sx * 0.35; scene.add(p); }
 }

@@ -54,8 +54,18 @@ function chochinTexture(ch, color) {
   gr.addColorStop(0, 'rgba(0,0,0,0.35)'); gr.addColorStop(0.5, 'rgba(255,240,200,0.35)'); gr.addColorStop(1, 'rgba(0,0,0,0.35)');
   g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
   g.strokeStyle = 'rgba(60,10,10,0.5)'; g.lineWidth = 2; for (let y = 8; y < 256; y += 14) { g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke(); }
-  g.font = '120px "Hiragino Mincho ProN","Noto Serif JP",serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillStyle = '#1a0a0a'; g.fillText(ch, 64, 132); g.fillText(ch, 192, 132);
+  // ねこのシルエット（すわった猫としっぽ）を前と後ろに
+  const cat = cx => {
+    g.fillStyle = '#1a0a0a'; g.beginPath();
+    g.ellipse(cx, 168, 30, 36, 0, 0, 7);              // からだ
+    g.moveTo(cx + 22, 92); g.arc(cx, 98, 22, 0, 7);   // あたま
+    g.fill();
+    g.beginPath(); g.moveTo(cx - 20, 88); g.lineTo(cx - 16, 62); g.lineTo(cx - 4, 80); g.fill();   // 耳
+    g.beginPath(); g.moveTo(cx + 20, 88); g.lineTo(cx + 16, 62); g.lineTo(cx + 4, 80); g.fill();
+    g.strokeStyle = '#1a0a0a'; g.lineWidth = 9; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(cx + 26, 192); g.quadraticCurveTo(cx + 58, 186, cx + 50, 150); g.stroke(); // しっぽ
+  };
+  cat(64); cat(192); void ch;
   return tx(c);
 }
 export function chochin(r) {
