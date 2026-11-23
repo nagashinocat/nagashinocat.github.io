@@ -11,7 +11,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { paperBuilding, paperBuildingDetailed } from '../js/scene/paper.js';
-import { makeSign, makeSign2, makeSign3, bracket, standSign } from '../js/scene/signs.js';
+import { makeSign, makeSign2, makeSign3, bracket, standSign, shopStand } from '../js/scene/signs.js';
 import { groundTextures, chochin } from '../js/scene/alley.js';
 import { glowTex } from '../js/scene/parts.js';
 import { rng } from '../js/rng.js';
@@ -142,11 +142,12 @@ for (const side of [-1, 1]) {
 // ゲームのスタンド看板：路地の両端に立てる（バナー＋題名）
 {
   const works = (await (await fetch('../data/works.json')).json()).filter(w => w.district === 'games');
+  const TYPES = ['pillar', 'easel', 'hang'];
   for (let i = 0; i < works.length; i++) {
-    const side = i % 2 ? 1 : -1, z = 0.46 - Math.floor(i / 2) * 0.16 - (side > 0 ? 0.06 : 0);
-    const s = await standSign(works[i], { w: 0.085 });
-    s.group.position.set(side * (ALLEY / 2 - 0.05), 0.003, z);
-    s.group.rotation.y = side * -0.55;
+    const side = i % 2 ? 1 : -1, z = 0.36 - Math.floor(i / 2) * 0.12 - (side > 0 ? 0.05 : 0);
+    const s = await shopStand(works[i], TYPES[i % 3]);
+    s.group.position.set(side * (ALLEY / 2 - 0.022), 0.003, z);
+    s.group.rotation.y = side * -0.45;
     scene.add(s.group);
   }
 }

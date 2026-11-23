@@ -424,3 +424,80 @@ export async function standSign(work, { w = 0.09, rng = Math.random } = {}) {
   board.userData = { workId: work.id, faceMat, color: col };
   return { group, hit: board, faceMat };
 }
+
+// お店の前に並べる小さなスタンド看板（3種類）
+// pillar: 縦長の両面スタンド / easel: A型の黒板 / hang: 枠から吊るした板
+async function loadImg(src) { if (!src) return null; const im = new Image(); im.src = /^(\/|http)/.test(src) ? src : '../' + src; try { await im.decode(); return im; } catch { return null; } }
+function cover(g, im, x, y, w, h) { if (!im) return; const k = Math.max(w / im.naturalWidth, h / im.naturalHeight); g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip(); g.drawImage(im, x + (w - im.naturalWidth * k) / 2, y + (h - im.naturalHeight * k) / 2, im.naturalWidth * k, im.naturalHeight * k); g.restore(); }
+function glowText(g, t, x, y, px, col, font = JP) { g.font = `${px}px ${font}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = col; g.shadowBlur = px * 0.4; g.fillStyle = col; g.fillText(t, x, y); g.shadowBlur = 0; g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillText(t, x, y); }
+function fitPx(g, t, maxW, px, font = JP) { g.font = `${px}px ${font}`; while (px > 10 && g.measureText(t).width > maxW) { px--; g.font = `${px}px ${font}`; } return px; }
+
+export async function shopStand(work, type = 'pillar') {
+  const col = work.color || '#ff4fa3', im = await loadImg(work.shot);
+  const group = new THREE.Group();
+  const metal = new THREE.MeshStandardMaterial({ color: '#b8b8bc', roughness: 0.35, metalness: 0.7 });
+  const black = new THREE.MeshStandardMaterial({ color: '#1a1618', roughness: 0.6, metalness: 0.3 });
+  const woodM = new THREE.MeshStandardMaterial({ color: '#3a2418', roughness: 0.8 });
+  const mk = (W, H) => { const c = cv(W, H); return [c, c.getContext('2d')]; };
+  const face = (c, mul = 1.35) => new THREE.MeshBasicMaterial({ map: tx(c), toneMapped: false, color: new THREE.Color(mul, mul, mul) });
+  let hit, faceMat;
+  if (type === 'pillar') {
+    const w = 0.022, h = 0.058, base = 0.004;
+    const [c, g] = mk(240, 640);
+    g.fillStyle = '#0c0a0c'; g.fillRect(0, 0, 240, 640);
+    cover(g, im, 0, 0, 240, 240);
+    // 縦の題名（英字は回して）
+    const latin = !/[　-鿿＀-￯]/.test(work.title);
+    if (latin) { g.save(); g.translate(120, 450); g.rotate(Math.PI / 2); const px = fitPx(g, work.title, 360, 72); glowText(g, work.title, 0, 0, px, col); g.restore(); }
+    else { const cs = [...work.title].filter(ch => !'、。'.includes(ch)), n = cs.length, cols = n > 9 ? 2 : 1, per = Math.ceil(n / cols), px = Math.min(100, 380 / per, 200 / cols); cs.forEach((ch, i) => glowText(g, ch, 120 + ((cols - 1) / 2 - Math.floor(i / per)) * px, 260 + px / 2 + (i % per) * px, px * 0.95, col)); }
+    g.fillStyle = col; g.fillRect(0, 236, 240, 6);
+    faceMat = face(c);
+    hit = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.003), [black, black, black, black, faceMat, faceMat]);
+    hit.position.y = base + 0.002 + h / 2; group.add(hit);
+    for (const sx of [-1, 1]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.0018, h + 0.002, 0.004), metal); post.position.set(sx * (w / 2 + 0.0009), hit.position.y, 0); group.add(post); }
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(w * 1.25, base, 0.018), metal); plate.position.y = base / 2; group.add(plate);
+  } else if (type === 'easel') {
+    const w = 0.03, h = 0.046, tilt = 0.2;
+    const [c, g] = mk(300, 460);
+    g.fillStyle = '#1e2620'; g.fillRect(0, 0, 300, 460);
+    for (let i = 0; i < 300; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.04})`; g.fillRect(Math.random() * 300, Math.random() * 460, 8, 2); }
+    cover(g, im, 24, 30, 252, 160); g.strokeStyle = '#f0ece0'; g.lineWidth = 3; g.strokeRect(24, 30, 252, 160);
+    g.font = `22px ${JP}`; g.fillStyle = '#ffd86a'; g.textAlign = 'center'; g.fillText('本日のおすすめ', 150, 222);
+    const lines = work.title.length > 10 ? [work.title.slice(0, Math.ceil(work.title.length / 2)), work.title.slice(Math.ceil(work.title.length / 2))] : [work.title];
+    lines.forEach((t, i) => { const px = fitPx(g, t, 260, 44); g.fillStyle = '#f4f0e6'; g.fillText(t, 150, 280 + i * (px + 8)); });
+    g.font = `26px ${JP}`; g.fillStyle = '#9fe2ff'; g.fillText('▶ あそぶ', 150, 420);
+    faceMat = face(c, 1.2);
+    const frameT = 0.003;
+    for (const s of [1, -1]) {
+      const leaf = new THREE.Group();
+      const board = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.002), [woodM, woodM, woodM, woodM, s > 0 ? faceMat : woodM, woodM]);
+      board.position.y = h / 2 + 0.006; leaf.add(board);
+      for (const sx of [-1, 1]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(frameT, h + 0.008, frameT), woodM); leg.position.set(sx * (w / 2 + frameT / 2), (h + 0.008) / 2, 0); leaf.add(leg); }
+      const top = new THREE.Mesh(new THREE.BoxGeometry(w + frameT * 2, frameT, frameT), woodM); top.position.y = h + 0.0065; leaf.add(top);
+      leaf.rotation.x = -s * tilt; leaf.position.z = s * (h + 0.008) * Math.sin(tilt);
+      if (s > 0) hit = board;
+      group.add(leaf);
+    }
+  } else { // hang
+    const w = 0.03, ph = 0.028, H = 0.056;
+    const [c, g] = mk(300, 280);
+    g.fillStyle = '#121012'; g.fillRect(0, 0, 300, 280);
+    cover(g, im, 14, 14, 272, 150);
+    const px = fitPx(g, work.title, 270, 40); glowText(g, work.title, 150, 200, px, col);
+    g.font = `22px ${JP}`; g.fillStyle = '#e8e4dc'; g.textAlign = 'center'; g.fillText(work.blurb ? work.blurb.slice(0, 16) : '', 150, 248);
+    faceMat = face(c);
+    hit = new THREE.Mesh(new THREE.BoxGeometry(w, ph, 0.002), [black, black, black, black, faceMat, faceMat]);
+    hit.position.y = H - 0.008 - ph / 2; group.add(hit);
+    for (const sx of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.0022, H, 0.0022), black); post.position.set(sx * (w / 2 + 0.004), H / 2, 0); group.add(post);
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.003, 0.02), black); foot.position.set(sx * (w / 2 + 0.004), 0.0015, 0); group.add(foot);
+      const hook = new THREE.Mesh(new THREE.TorusGeometry(0.0016, 0.0005, 4, 8), metal); hook.position.set(sx * w * 0.35, H - 0.0065, 0); group.add(hook);
+    }
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(w + 0.010, 0.0022, 0.0022), black); bar.position.y = H - 0.0011; group.add(bar);
+  }
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: col, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+  halo.scale.setScalar(0.08); halo.position.set(0, 0.03, -0.005); group.add(halo);
+  const light = new THREE.PointLight(col, 0.025, 0.12, 2); light.position.set(0, 0.035, 0.02); group.add(light);
+  hit.userData = { workId: work.id, faceMat, color: col };
+  return { group, hit, faceMat };
+}
