@@ -389,3 +389,38 @@ export function makeSign3(kind, text, color, size, { rng = Math.random } = {}) {
   return { group, hit, faceMat, update };
 }
 const r3 = (rng, arr) => arr[Math.floor(rng() * arr.length)];
+
+// ゲームのスタンド看板：路地に立てる、バナー（画面写真）＋題名の光る看板
+export async function standSign(work, { w = 0.09, rng = Math.random } = {}) {
+  const PW = 640, PH = 520, h = w * PH / PW;
+  const c = cv(PW, PH), g = c.getContext('2d');
+  const col = work.color || '#ff4fa3';
+  g.fillStyle = '#0e0810'; g.fillRect(0, 0, PW, PH);
+  const bh = PW * 9 / 16;
+  if (work.shot) {
+    const im = new Image(); im.src = work.shot.startsWith('/') || work.shot.startsWith('http') ? work.shot : '../' + work.shot;
+    try { await im.decode(); const k = Math.max(PW / im.naturalWidth, bh / im.naturalHeight); g.drawImage(im, (PW - im.naturalWidth * k) / 2, (bh - im.naturalHeight * k) / 2, im.naturalWidth * k, im.naturalHeight * k); } catch { }
+  }
+  // 題名の帯
+  g.fillStyle = '#140a14'; g.fillRect(0, bh, PW, PH - bh);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  let px = 64; g.font = `${px}px ${JP}`; while (px > 14 && g.measureText(work.title).width > PW * 0.9) { px--; g.font = `${px}px ${JP}`; }
+  g.shadowColor = col; g.shadowBlur = 18; g.fillStyle = col; g.fillText(work.title, PW / 2, bh + (PH - bh) * 0.42);
+  g.shadowBlur = 0; g.fillStyle = 'rgba(255,255,255,0.65)'; g.fillText(work.title, PW / 2, bh + (PH - bh) * 0.42);
+  g.font = `26px ${JP}`; g.fillStyle = '#ffe9a8'; g.fillText(work.url ? '▶ あそぶ' : '工事中', PW / 2, bh + (PH - bh) * 0.82);
+  // 縁のネオン管
+  g.strokeStyle = col; g.lineWidth = 10; g.shadowColor = col; g.shadowBlur = 20; g.strokeRect(8, 8, PW - 16, PH - 16);
+  const faceMat = new THREE.MeshBasicMaterial({ map: tx(c), toneMapped: false, color: new THREE.Color(1.5, 1.5, 1.5) });
+  const group = new THREE.Group();
+  const metalM = new THREE.MeshStandardMaterial({ color: '#2a2224', roughness: 0.6, metalness: 0.4 });
+  const board = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.006), [metalM, metalM, metalM, metalM, faceMat, metalM]);
+  const legH = 0.035;
+  board.position.y = legH + h / 2; group.add(board);
+  board.add(new THREE.Mesh(new THREE.BoxGeometry(w + 0.003, h + 0.003, 0.008), hull));
+  for (const sx of [-1, 1]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.003, legH + 0.004, 0.003), metalM); leg.position.set(sx * w * 0.4, legH / 2, 0); group.add(leg); const foot = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.002, 0.03), metalM); foot.position.set(sx * w * 0.4, 0.001, 0); group.add(foot); }
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: col, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+  halo.scale.set(w * 2.2, h * 2.2, 1); halo.position.copy(board.position); halo.position.z = -0.01; group.add(halo);
+  const light = new THREE.PointLight(col, 0.06, 0.25, 2); light.position.set(0, legH + h / 2, 0.04); group.add(light);
+  board.userData = { workId: work.id, faceMat, color: col };
+  return { group, hit: board, faceMat };
+}

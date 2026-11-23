@@ -11,7 +11,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { paperBuilding, paperBuildingDetailed } from '../js/scene/paper.js';
-import { makeSign, makeSign2, makeSign3, bracket } from '../js/scene/signs.js';
+import { makeSign, makeSign2, makeSign3, bracket, standSign } from '../js/scene/signs.js';
 import { groundTextures, chochin } from '../js/scene/alley.js';
 import { glowTex } from '../js/scene/parts.js';
 import { rng } from '../js/rng.js';
@@ -138,6 +138,17 @@ for (const side of [-1, 1]) {
   for (let k = 0; k < 7; k++) { const x = r.range(-ALLEY / 2 + 0.02, ALLEY / 2 + 0.02), y = r.range(0.24, 0.32); for (let z = 0.6; z > -0.8; z -= 0.2) add(new THREE.Vector3(x, y, z), new THREE.Vector3(x + r.range(-0.01, 0.01), y + r.range(-0.01, 0.01), z - 0.2), r.range(0.008, 0.02), r.range(0.0005, 0.0009)); }
   const { mergeGeometries } = await import('three/addons/utils/BufferGeometryUtils.js');
   scene.add(new THREE.Mesh(mergeGeometries(geos), wireMat));
+}
+// ゲームのスタンド看板：路地の両端に立てる（バナー＋題名）
+{
+  const works = (await (await fetch('../data/works.json')).json()).filter(w => w.district === 'games');
+  for (let i = 0; i < works.length; i++) {
+    const side = i % 2 ? 1 : -1, z = 0.46 - Math.floor(i / 2) * 0.16 - (side > 0 ? 0.06 : 0);
+    const s = await standSign(works[i], { w: 0.085 });
+    s.group.position.set(side * (ALLEY / 2 - 0.05), 0.003, z);
+    s.group.rotation.y = side * -0.55;
+    scene.add(s.group);
+  }
 }
 // 奥のタワー（大画面）
 {
