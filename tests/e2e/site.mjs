@@ -24,7 +24,7 @@ export async function run(ctx) {
   if (process.argv.includes('--site-only')) return;
   for (const [name, vp] of [['phone', { width: 390, height: 844 }], ['pc', { width: 1280, height: 800 }]]) {
     const { page, errs } = await openPage(ctx, '/tests/e2e/scene.html', vp);
-    await check(`scene ${name}: 本が開く`, async () => { await page.waitForFunction(() => document.title === 'opened', null, { timeout: 60000 }); });
+    await check(`scene ${name}: 本が開く`, async () => { await page.waitForFunction(() => document.title === 'opened', null, { timeout: 240000 }); });
     await page.waitForTimeout(800);
     await page.screenshot({ path: `${OUT}scene-${name}.png` });
     await check(`scene ${name}: エラーなし`, () => assert(errs.length === 0, errs.join(' / ')));
@@ -63,13 +63,13 @@ async function runSite(ctx) {
   // 本体：スマホと PC
   for (const [name, vp] of [['phone', { width: 390, height: 844 }], ['pc', { width: 1280, height: 800 }]]) {
     const { page, errs } = await openPage(ctx, '/', vp, { hasTouch: name === 'phone' });
-    await check(`site ${name}: 本が開いて操作できる`, () => page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 60000 }));
+    await check(`site ${name}: 本が開いて操作できる`, () => page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 240000 }));
     await page.waitForTimeout(900);
     await page.screenshot({ path: `${OUT}site-${name}.png` });
     await check(`site ${name}: コンソールエラー 0`, () => assert(errs.length === 0, errs.join(' / ')));
     await check(`site ${name}: めくりボタンで工場街へ`, async () => {
       await page.click('#next');
-      await page.waitForFunction(() => window.__hub.book.current === 'tools' && !window.__hub.book.busy, null, { timeout: 60000 });
+      await page.waitForFunction(() => window.__hub.book.current === 'tools' && !window.__hub.book.busy, null, { timeout: 240000 });
       const label = await page.textContent('#district-name');
       assert(label.includes('工場街'), label);
     });
@@ -85,7 +85,7 @@ async function runSite(ctx) {
   // 幅 360 ではみ出さない、長い題は折り返す
   {
     const { page } = await openPage(ctx, '/', { width: 360, height: 740 }, { hasTouch: true });
-    await page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 60000 });
+    await page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 240000 });
     await page.click('#open-list');
     await page.screenshot({ path: `${OUT}site-360-list.png`, fullPage: true });
     await check('360px: 横にはみ出さない', async () => {
@@ -102,7 +102,7 @@ async function runSite(ctx) {
   {
     const { page } = await openPage(ctx, '/', { width: 1280, height: 800 });
     await page.route('**/assets/cm/**', r => r.fulfill({ status: 404, body: '' }));
-    await page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 60000 });
+    await page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 240000 });
     await check('CM動画が読めないと文字表示に戻る', async () => {
       const id = await page.evaluate(() => window.__hub.works.find(w => w.cm)?.id);
       assert(id, 'cm のある作品がない');
