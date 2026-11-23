@@ -1,0 +1,98 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ペーパークラフトの路地（試作）</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Righteous&display=swap">
+<style>html,body{margin:0;height:100%;background:#05030a;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
+import { paperBuilding } from '../js/scene/paper.js';
+import { makeSign, bracket } from '../js/scene/signs.js';
+import { groundTextures } from '../js/scene/alley.js';
+import { glowTex } from '../js/scene/parts.js';
+import { rng } from '../js/rng.js';
+try { await document.fonts.load('40px "Dela Gothic One"'); await document.fonts.load('40px "Righteous"'); } catch {}
+const r = rng(5);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2('#1e1030', 0.75);
+// 空：紺〜紫のグラデーション、月、雲
+{
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 512; const g = c.getContext('2d');
+  const gr = g.createLinearGradient(0, 0, 0, 512); gr.addColorStop(0, '#070a24'); gr.addColorStop(0.55, '#1c1442'); gr.addColorStop(1, '#4a2060'); g.fillStyle = gr; g.fillRect(0, 0, 1024, 512);
+  for (let i = 0; i < 90; i++) { g.fillStyle = `rgba(255,255,255,${Math.random()})`; g.fillRect(Math.random() * 1024, Math.random() * 260, 1.2, 1.2); }
+  for (let i = 0; i < 14; i++) { const x = Math.random() * 1024, y = 60 + Math.random() * 200; const gg = g.createRadialGradient(x, y, 0, x, y, 120); gg.addColorStop(0, 'rgba(120,90,160,0.35)'); gg.addColorStop(1, 'rgba(120,90,160,0)'); g.fillStyle = gg; g.fillRect(x - 120, y - 120, 240, 240); }
+  g.fillStyle = '#f4f0e0'; g.beginPath(); g.arc(820, 90, 34, 0, 7); g.fill(); const mg = g.createRadialGradient(820, 90, 30, 820, 90, 110); mg.addColorStop(0, 'rgba(220,220,255,0.35)'); mg.addColorStop(1, 'rgba(220,220,255,0)'); g.fillStyle = mg; g.fillRect(700, 0, 240, 220);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+scene.add(new THREE.HemisphereLight('#5a4a8a', '#1a1020', 0.55));
+const moon = new THREE.DirectionalLight('#9aa8ff', 0.6); moon.position.set(-1, 2, 1); scene.add(moon);
+const ALLEY = 0.26;
+// 路地の両側の紙の建物
+for (const side of [-1, 1]) {
+  let z = 0.62;
+  while (z > -0.8) {
+    const d = r.range(0.12, 0.2), w = r.range(0.16, 0.26), h = r.range(0.55, 1.05);
+    const b = paperBuilding(d, h, w, r);  // 正面（+z）を路地へ向ける
+    b.position.set(side * ALLEY / 2, 0, z - d / 2);
+    b.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2;
+    scene.add(b);
+    // 看板・提灯と、その光
+    const nSigns = r.int(2, 4);
+    for (let k = 0; k < nSigns; k++) {
+      const kinds = ['neon', 'lightbox', 'marquee', 'round', 'neon'];
+      const kind = r.pick(kinds), color = r.pick(['#ff4fa3', '#4fd8ff', '#ffb21f', '#b46bff', '#ff3b3b']);
+      const text = kind === 'marquee' ? r.pick(['BAR', 'OPEN', 'HOT DOG', 'MOTEL']) : r.pick(['酒', '麺', '薬', '飯店', '大東電器', '按摩', '雀荘', '龍華']);
+      const size = kind === 'marquee' ? [0.012 + text.length * 0.007, 0.02] : kind === 'round' ? [0.04, 0.04] : [0.026, 0.03 + [...text].length * 0.02];
+      const sg = makeSign(kind, text, color, size, { vertical: size[1] > size[0], rng: () => r.next() });
+      const y = r.range(0.12, h * 0.7), zz = z - d * r.range(0.2, 0.8);
+      const out = (kind === 'marquee' ? 0.006 : size[0]) / 2 + 0.012;
+      sg.group.position.set(side * (ALLEY / 2 - out - (kind === 'marquee' ? size[0] / 2 - 0.004 : 0)), y, zz);
+      scene.add(sg.group);
+      const arm = bracket(out + (kind === 'marquee' ? size[0] / 2 : 0) + 0.004); arm.position.set(side * ALLEY / 2, y + size[1] / 2 - 0.004, zz); arm.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2; scene.add(arm);
+      const L = new THREE.PointLight(color, 0.06, 0.35, 2); L.position.copy(sg.group.position); scene.add(L);
+    }
+    z -= d + r.range(0.0, 0.01);
+  }
+}
+// 奥のタワー（大画面）
+{
+  const t = paperBuilding(0.3, 1.5, 0.2, r, { sides: false });
+  t.position.set(0, 0, -0.9); scene.add(t);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.22), new THREE.MeshBasicMaterial({ color: '#ff6ab8', toneMapped: false }));
+  scr.position.set(0, 1.0, -0.895); scene.add(scr);
+  const s = makeSign('neon', '開発街', '#ff3b6a', [0.24, 0.08], { rng: () => r.next() }); s.group.position.set(0, 1.2, -0.893); scene.add(s.group);
+  const beam = new THREE.MeshBasicMaterial({ color: '#9fd8ff', transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  for (const sx of [-1, 1]) { const p = new THREE.Group(); p.position.set(sx * 0.08, 1.5, -1.0); const c = new THREE.Mesh(new THREE.ConeGeometry(0.25, 3, 16, 1, true), beam); c.position.y = 1.5; c.rotation.z = Math.PI; p.add(c); p.rotation.z = -sx * 0.35; scene.add(p); }
+}
+// 提灯の列と光
+for (const side of [-1, 1]) for (let z = 0.5; z > -0.6; z -= 0.07) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.008, 12, 8), new THREE.MeshBasicMaterial({ color: '#ff4a2a', toneMapped: false }));
+  m.scale.y = 1.3; m.position.set(side * (ALLEY / 2 - 0.03), 0.06, z); scene.add(m);
+  if (Math.round(z * 100) % 14 === 0) { const L = new THREE.PointLight('#ff6a3a', 0.05, 0.3, 2); L.position.copy(m.position); scene.add(L); }
+}
+// 濡れた路面
+{
+  const gt = groundTextures(r, ALLEY + 0.04, 1.6);
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(ALLEY + 0.04, 1.6), new THREE.MeshStandardMaterial({ map: gt.top, transparent: true, depthWrite: false, roughness: 0.6 }));
+  top.rotation.x = -Math.PI / 2; top.position.set(0, 0.002, -0.1); scene.add(top);
+  const mirror = new Reflector(new THREE.PlaneGeometry(ALLEY + 0.04, 1.6), { textureWidth: 1024, textureHeight: 2048, color: 0xb0a0c0 });
+  mirror.rotation.x = -Math.PI / 2; mirror.position.set(0, 0.001, -0.1); scene.add(mirror);
+}
+const cam = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.005, 20);
+cam.position.set(0, 0.045, 0.7); cam.lookAt(0, 0.42, -0.9);
+const comp = new EffectComposer(renderer);
+comp.addPass(new RenderPass(scene, cam));
+comp.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.55, 0.45, 0.82));
+comp.addPass(new OutputPass());
+comp.render();
+document.title = 'ready';
+</script></body></html>

@@ -89,7 +89,7 @@ function andon(r) {
 }
 
 // ---- 路面：砂まじりのアスファルト、側溝、グレーチング、マンホール、水たまり ----
-function groundTextures(r, W, L) {
+export function groundTextures(r, W, L) {
   const PX = 1100; // 1単位あたりの画素
   const w = Math.round(W * PX), h = Math.round(L * PX);
   const c = cv(w, h), g = c.getContext('2d');
