@@ -69,7 +69,7 @@ const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; 
   // 大通りの路面：濡れたアスファルトを少し透かす（空が映りすぎないように）
   const [ac, ag] = cv(64, 512); ag.fillStyle = 'rgba(26,18,30,0.86)'; ag.fillRect(0, 0, 64, 512);
   ag.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 30; i++) { const x = Math.random() * 64, y = Math.random() * 512, rr = 4 + Math.random() * 14; const gr = ag.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, 'rgba(0,0,0,0.7)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); ag.fillStyle = gr; ag.fillRect(x - rr, y - rr, rr * 2, rr * 2); }
-  const ave = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 1.4), new THREE.MeshBasicMaterial({ map: P(ac), transparent: true, depthWrite: false })); ave.rotation.x = -Math.PI / 2; ave.position.set(0, 0.0125, -0.05); scene.add(ave);
+  const ave = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshBasicMaterial({ map: P(ac), transparent: true, depthWrite: false, opacity: 0.55 })); ave.rotation.x = -Math.PI / 2; ave.position.set(0, 0.0125, 0); scene.add(ave);
 }
 
 const AX = 0.075; // 真ん中の大通りの半幅
@@ -78,9 +78,25 @@ const signColors = ['#ff4fd8', '#ff4fa3', '#ffb21f', '#ff7a2a', '#b46bff', '#4fd
 const B = []; // 建物（あとで看板・配管を付ける）
 function block(x, y, z, w, h, d, opts = {}) {
   const b = paperBuildingDetailed(w, h, d, r, { sides: false, palette: r.pick(RUST), ground: y > 0.02 ? 0.0 : 0.035, cheap: true, bare: !opts.near });
-  b.position.set(x, 0.012 + y, z + d / 2); b.rotation.y = opts.ry || 0; scene.add(b);
+  b.position.set(x, 0.012 + y, z + d / 2); b.rotation.y = opts.ry || 0; put(b);
   B.push({ b, x, y, z, w, h, d }); return b;
 }
+// 両側の塊は、それぞれ大通りへ向けて斜めに振る（写真のようにV字に）
+const SIDE = {}, PIV = {}, DRESSED = new Set();
+for (const sd of [-1, 1]) {
+  const outer = new THREE.Group(), inner = new THREE.Group();
+  PIV[sd] = new THREE.Vector3(sd * AX, 0, -0.62); // 奥の端を軸に、手前を外へ開く（V字）
+  outer.position.copy(PIV[sd]); inner.position.copy(PIV[sd]).negate();
+  outer.add(inner); scene.add(outer); SIDE[sd] = { outer, inner };
+}
+const _bb = new THREE.Box3(), _c = new THREE.Vector3();
+function put(o) {
+  let x = o.position.x;
+  if (Math.abs(x) < 1e-6) { _bb.setFromObject(o); _bb.getCenter(_c); x = _c.x; }
+  if (Math.abs(x) < AX * 0.6 && !o.isLight) { scene.add(o); return; }
+  SIDE[x < 0 ? -1 : 1].inner.add(o);
+}
+
 // ---- 両側の巨大な塊：中央寄りほど高く、外へ・手前へ段々に下がる。上に小さな箱が積み重なる ----
 for (const side of [-1, 1]) {
   for (let row = 0; row < 7; row++) {
@@ -99,12 +115,12 @@ for (const side of [-1, 1]) {
       for (let k = 0; k < r.int(1, 3); k++) {
         ww *= r.range(0.55, 0.85); dd *= r.range(0.6, 0.9); const hh = r.range(0.035, 0.08);
         const ox = r.range(-(w - ww) / 2, (w - ww) / 2), oz = r.range(-(d - dd) / 2, (d - dd) / 2) - (d - dd) / 2;
-        block(cx + ox, y, z + (d - dd) / 2 + oz * 0.5, ww, hh, dd, {});
+        block(cx + ox, y, z + (d - dd) / 2 + oz * 0.5, ww, hh, dd, { ry: r.range(-0.25, 0.25) });
         y += hh;
       }
       // 屋上：アンテナ・鉄塔・給水塔
-      if (r.next() < 0.5) { const a = paperAntenna(r); a.scale.setScalar(r.range(1.4, 2.6)); a.position.set(cx + r.range(-w * 0.3, w * 0.3), 0.012 + y, z + d / 2); scene.add(a); }
-      if (r.next() < 0.3) { const tk = paperTank(r); tk.scale.setScalar(0.8); tk.position.set(cx, 0.012 + y, z + d * 0.4); scene.add(tk); }
+      if (r.next() < 0.5) { const a = paperAntenna(r); a.scale.setScalar(r.range(1.4, 2.6)); a.position.set(cx + r.range(-w * 0.3, w * 0.3), 0.012 + y, z + d / 2); put(a); }
+      if (r.next() < 0.3) { const tk = paperTank(r); tk.scale.setScalar(0.8); tk.position.set(cx, 0.012 + y, z + d * 0.4); put(tk); }
       x += side * (w + r.range(-0.004, 0.006));
     }
   }
@@ -118,6 +134,7 @@ for (const side of [-1, 1]) {
   const SIZE = (kind, text) => ({ marquee: [0.012 + text.length * 0.0065, 0.018], round: [0.03, 0.03], shield: [0.03, 0.034], arrow: [0.05, 0.016], plank: [0.05, 0.018], tin: [0.022, 0.03], pawn: [0.035, 0.035], bulbvert: [0.02, 0.02 + [...text].length * 0.018], neonicon: [0.032, 0.032], cloth: [0.02, 0.02 + [...text].length * 0.018], nobori: [0.016, 0.07], enamel: [0.045, 0.018], letters: [0.013 * [...text].length, 0.016], led: [0.07, 0.01], fan: [0.05, 0.028] }[kind] || [0.018, 0.02 + [...text].length * 0.014]);
   const used = new Set();
   const dress = (o, faceX) => {
+    DRESSED.add(o);
     // faceX: 0 なら手前(+z)の面、±1 なら大通りへ向いた側面
     const n = faceX ? r.int(2, 5) : r.int(1, 4);
     const span = faceX ? o.d : o.w;
@@ -135,8 +152,8 @@ for (const side of [-1, 1]) {
       const out = project ? (kind === 'marquee' ? 0.006 : size[0]) / 2 + 0.01 : 0.004;
       if (!faceX) { sg.group.position.set(o.x + u, y, o.z + o.d + out); }
       else { sg.group.position.set(o.x + faceX * (o.w / 2 + out), y, o.z + o.d / 2 + u); if (!project) sg.group.rotation.y = faceX * Math.PI / 2; }
-      scene.add(sg.group);
-      if (project) { const arm = bracket(out); if (!faceX) { arm.position.set(o.x + u, y + size[1] / 2 - 0.002, o.z + o.d); } else { arm.position.set(o.x + faceX * o.w / 2, y + size[1] / 2 - 0.002, o.z + o.d / 2 + u); arm.rotation.y = faceX * Math.PI / 2; } scene.add(arm); }
+      put(sg.group);
+      if (project) { const arm = bracket(out); if (!faceX) { arm.position.set(o.x + u, y + size[1] / 2 - 0.002, o.z + o.d); } else { arm.position.set(o.x + faceX * o.w / 2, y + size[1] / 2 - 0.002, o.z + o.d / 2 + u); arm.rotation.y = faceX * Math.PI / 2; } put(arm); }
     }
   };
   const base = B.filter(o => o.y === 0);
@@ -148,18 +165,22 @@ for (const side of [-1, 1]) {
   for (const o of frontRow.values()) {
     if (Math.abs(o.x) > 0.9) continue;
     const n = Math.max(1, Math.floor(o.w / 0.025));
-    if (r.next() < 0.7) for (let k = 0; k < n; k++) { const l = chochin(r); l.scale.setScalar(0.55); l.position.set(o.x - o.w / 2 + (k + 0.5) * o.w / n, 0.05, o.z + o.d + 0.03); scene.add(l); }
-    if (r.next() < 0.6) { const L = new THREE.PointLight(r.pick(['#ffb060', '#ff9040', '#ff70a0']), 0.08, 0.22, 2); L.position.set(o.x, 0.05, o.z + o.d + 0.04); scene.add(L); }
+    if (r.next() < 0.7) for (let k = 0; k < n; k++) { const l = chochin(r); l.scale.setScalar(0.55); l.position.set(o.x - o.w / 2 + (k + 0.5) * o.w / n, 0.05, o.z + o.d + 0.03); put(l); }
+    if (r.next() < 0.6) { const L = new THREE.PointLight(r.pick(['#ffb060', '#ff9040', '#ff70a0']), 0.08, 0.22, 2); L.position.set(o.x, 0.05, o.z + o.d + 0.04); put(L); }
   }
   // 大通り沿いの提灯
-  for (const sx of [-1, 1]) for (let z = -0.55; z < 0.08; z += r.range(0.03, 0.06)) { if (r.next() < 0.3) continue; const l = chochin(r); l.scale.setScalar(0.5); l.position.set(sx * (AX - 0.012), 0.045, z); scene.add(l); }
+  for (const sx of [-1, 1]) for (let z = -0.55; z < 0.08; z += r.range(0.03, 0.06)) { if (r.next() < 0.3) continue; const l = chochin(r); l.scale.setScalar(0.5); l.position.set(sx * (AX - 0.012), 0.045, z); put(l); }
   // 太い配管を手前の面に
   for (let i = 0; i < 16; i++) {
     const o = r.pick([...frontRow.values()]); const x0 = o.x + r.range(-o.w * 0.4, o.w * 0.4), zf = o.z + o.d + 0.008;
     const top = r.range(0.1, Math.min(o.h * 0.9, 0.45)), bend = r.range(0.04, 0.1) * (r.next() < 0.5 ? -1 : 1);
-    scene.add(paperPipe([new THREE.Vector3(x0, 0.012, zf), new THREE.Vector3(x0, top, zf), new THREE.Vector3(x0 + bend, top, zf), new THREE.Vector3(x0 + bend, top + 0.05, zf)], r.range(0.004, 0.006), r.pick(['#8a8a8e', '#6a6a70', '#7a5a44'])));
+    put(paperPipe([new THREE.Vector3(x0, 0.012, zf), new THREE.Vector3(x0, top, zf), new THREE.Vector3(x0 + bend, top, zf), new THREE.Vector3(x0 + bend, top + 0.05, zf)], r.range(0.004, 0.006), r.pick(['#8a8a8e', '#6a6a70', '#7a5a44'])));
   }
 }
+// 塊ごとに大通りへ向けて回す
+for (const sd of [-1, 1]) SIDE[sd].outer.rotation.y = sd * 0.42;
+// 看板を付けていない建物は、それぞれ大通りの方へ向きをばらばらに振る
+for (const o of B) if (!DRESSED.has(o)) { const sd = o.x < 0 ? -1 : 1; o.b.rotation.y = r.range(-0.18, 0.18); }
 // ---- 奥の丸いタワー（路地の突き当たりと同じビル） ----
 {
   const [sc, sg] = cv(640, 360); const im = new Image(); im.src = '../assets/shots/aiaigasa.jpg'; await im.decode().catch(() => {});
@@ -207,7 +228,7 @@ for (let i = 0; i < 16; i++) {
   for (let i = 0; i < 26; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: st, transparent: true, opacity: 0.3, depthWrite: false })); const side = r.pick([-1, 1]); s.position.set(side * r.range(0.2, 1.0), r.range(0.03, 0.12), r.range(-0.1, 0.25)); s.scale.setScalar(r.range(0.12, 0.3)); scene.add(s); }
 }
 const cam = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.01, 30);
-cam.position.set(0, 0.12, 0.98); cam.lookAt(0, 0.36, -0.5);
+cam.position.set(0, 0.14, 1.12); cam.lookAt(0, 0.34, -0.5);
 const comp = new EffectComposer(renderer);
 comp.addPass(new RenderPass(scene, cam));
 comp.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.8, 0.6, 0.85));
