@@ -1,0 +1,14 @@
+import { chromium } from 'playwright';
+import { serve } from '../serve.mjs';
+import { routeThree } from './site.mjs';
+const srv = await serve();
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: 1254, height: 706 } });
+p.on('pageerror', e => console.log('ERR', e.message));
+await routeThree(p);
+await p.goto(srv.url + '/');
+await p.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 120000 });
+await p.evaluate(() => window.__hub.stage.flyTo('overview', 0.1));
+await p.waitForTimeout(800);
+await p.screenshot({ path: process.argv[2] });
+await b.close(); srv.close();

@@ -1,6 +1,7 @@
 // 九龍城の路地の作り込み：窓の鉄格子・室外機・洗濯物・屋台と提灯・湯気・電線と配管・濡れた路面・突き当たりのタワー
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
 import { INK } from '../draw/manga.js';
 import { ALLEY } from '../layout.js';
 
@@ -57,7 +58,7 @@ function cageGeometry() {
   return mergeGeometries(bars);
 }
 
-export function addKowloon(root, plan, bmap, decor, r, { pivots = [], signs = [] } = {}) {
+export function addKowloon(root, plan, bmap, decor, r, { pivots = [], signs = [], models = false, reflect = false } = {}) {
   const inner = plan.buildings.filter(b => b.strip === 'inner');
   const facadeOf = b => {
     const nx = b.face === 'east' ? 1 : -1;
@@ -67,7 +68,7 @@ export function addKowloon(root, plan, bmap, decor, r, { pivots = [], signs = []
 
   // --- 窓まわり：室外機・鉄格子・洗濯物 ---
   const acs = [], cages = [], cloths = [], lines = [], pipes = [];
-  for (const b of inner) {
+  for (const b of models ? [] : inner) {
     const f = facadeOf(b);
     const floors = Math.floor((f.h - 0.07) / 0.045);
     for (let k = 0; k < floors; k++) {
@@ -102,9 +103,38 @@ export function addKowloon(root, plan, bmap, decor, r, { pivots = [], signs = []
     wireGeos.push(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(A, M, B), 10, rad, 3, false));
   };
   for (const [a, b] of lines) addWire(a, b, 0.05, 0.0006);
-  // 路地をまたぐ電線（たくさん）と束
   const L = inner.filter(b => b.x < 0), R = inner.filter(b => b.x > 0);
   const hAt = (side, z) => { const b = side.find(b => Math.abs(b.z - z) <= b.d / 2) || side.reduce((p, q) => Math.abs(q.z - z) < Math.abs(p.z - z) ? q : p); return b.h; };
+  if (models) {
+    // 電線は奥から手前へ走らせる：壁ぎわの金具から金具へ、たわみながら何本も
+    for (const side of [-1, 1]) {
+      const sideB = side < 0 ? L : R;
+      for (let i = 0; i < 34; i++) {
+        const x0 = side * (ALLEY / 2 - r.range(0.004, 0.05));
+        let y = r.range(0.1, 0.55), z = r.range(0.4, 0.56), x = x0;
+        const pts = [];
+        while (z > -0.5) {
+          const step = r.range(0.07, 0.18), z2 = z - step;
+          const y2 = Math.min(hAt(sideB, z2) * 0.95, Math.max(0.08, y + r.range(-0.05, 0.05)));
+          const x2 = side * (ALLEY / 2 - r.range(0.004, 0.06));
+          addWire([x, y, z], [x2, y2, z2], r.range(0.08, 0.22), r.range(0.0005, 0.001));
+          pts.push([x2, y2, z2]);
+          x = x2; y = y2; z = z2;
+        }
+      }
+      // 太い束（3〜7本まとめて）
+      for (let i = 0; i < 6; i++) {
+        const n = r.int(3, 7), y = r.range(0.15, 0.45), x0 = side * (ALLEY / 2 - r.range(0.01, 0.03));
+        for (let k = 0; k < n; k++) for (let z = 0.5; z > -0.45; z -= 0.22) addWire([x0 - side * k * 0.003, y + k * 0.004, z], [x0 - side * k * 0.003, y + k * 0.004, z - 0.22], 0.1 + k * 0.02, 0.0008);
+      }
+    }
+    // 路地の上も、奥から手前へ（提灯の綱にかかりながら）
+    for (let i = 0; i < 22; i++) {
+      const x = r.range(-ALLEY / 2 + 0.03, ALLEY / 2 - 0.03), y = r.range(0.22, 0.5);
+      for (let z = 0.5; z > -0.45; z -= 0.16) addWire([x, y, z], [x + r.range(-0.01, 0.01), y + r.range(-0.02, 0.02), z - 0.16], r.range(0.08, 0.2), r.range(0.0005, 0.0009));
+    }
+  } else {
+  // 路地をまたぐ電線（たくさん）と束
   for (let i = 0; i < 150; i++) {
     const z = r.range(-0.48, 0.62), z2 = z + r.range(-0.08, 0.08);
     const ha = hAt(L, z), hb = hAt(R, z2);
@@ -114,6 +144,7 @@ export function addKowloon(root, plan, bmap, decor, r, { pivots = [], signs = []
   for (let i = 0; i < 16; i++) {
     const z = r.range(-0.4, 0.55), y = r.range(0.18, 0.5), n = r.int(4, 8);
     for (let k = 0; k < n; k++) addWire([-ALLEY / 2, y + k * 0.006, z + k * 0.004], [ALLEY / 2, y + k * 0.005 + r.range(-0.02, 0.02), z + r.range(-0.03, 0.03)], 0.14 + k * 0.025, 0.0007);
+  }
   }
   decor.add(new THREE.Mesh(mergeGeometries(wireGeos), new THREE.MeshBasicMaterial({ color: '#0e0810' })));
 
@@ -128,11 +159,16 @@ export function addKowloon(root, plan, bmap, decor, r, { pivots = [], signs = []
   };
   const PIPE = ['#5a4248', '#6b4a3a', '#4a3f52', '#7a5a48', '#3d3440', '#7d6f60'];
   for (const [a, b] of pipes) addPipe([a, b], r.range(0.0016, 0.0032), r.pick(PIPE));
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < (models ? 0 : 26); i++) {
     const z = r.range(-0.45, 0.3), y = r.range(0.1, Math.min(hAt(L, z), hAt(R, z)) * 0.9), dy = r.range(-0.06, 0.08), off = r.range(0.006, 0.025);
     addPipe([[-ALLEY / 2, y, z], [-ALLEY / 2 + off, y, z], [-ALLEY / 2 + off, y + dy, z], [ALLEY / 2 - off, y + dy, z + r.range(-0.02, 0.02)], [ALLEY / 2 - off, y, z], [ALLEY / 2, y, z]], r.next() < 0.3 ? r.range(0.003, 0.005) : r.range(0.0012, 0.0024), r.pick(PIPE));
   }
-  for (const side of [L, R]) for (let i = 0; i < 18; i++) {
+  // 奥から手前へ走る配管（壁ぎわ）
+  if (models) for (const side of [-1, 1]) for (let i = 0; i < 5; i++) {
+    const x = side * (ALLEY / 2 - r.range(0.006, 0.02)), y = r.range(0.03, 0.3);
+    addPipe([[x, y, 0.68], [x, y, 0.1], [x, y + r.range(-0.03, 0.05), -0.1], [x, y, -0.5]], r.range(0.0018, 0.0035), r.pick(PIPE));
+  }
+  for (const side of models ? [] : [L, R]) for (let i = 0; i < 18; i++) {
     const b = r.pick(side), f = facadeOf(b), y = r.range(0.06, b.h * 0.9), za = r.range(f.z0, f.z1), zb = za + r.range(-0.15, 0.15);
     addPipe([[f.x + f.nx * 0.007, y, za], [f.x + f.nx * 0.007, y, (za + zb) / 2], [f.x + f.nx * 0.007, y + r.range(-0.04, 0.04), zb]], r.range(0.0012, 0.0028), r.pick(PIPE));
   }
@@ -237,7 +273,7 @@ export function addKowloon(root, plan, bmap, decor, r, { pivots = [], signs = []
 
   // --- 手前の壁に描かれた大きな文字（色あせたペンキ） ---
   const near = L.slice().sort((a, b) => b.z - a.z)[0];
-  if (near) {
+  if (near && !models) {
     const f = facadeOf(near), c = canvas(128, 512), g = c.getContext('2d');
     g.fillStyle = 'rgba(232,222,210,0.78)'; g.fillRect(6, 6, 116, 500);
     g.font = '96px "Dela Gothic One","Hiragino Mincho ProN",serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#8a1e22';
@@ -260,7 +296,38 @@ export function addKowloon(root, plan, bmap, decor, r, { pivots = [], signs = []
   pg.strokeStyle = 'rgba(8,4,10,0.9)'; pg.lineWidth = 2;
   for (let i = 0; i < 50; i++) { let x = r.range(0, 256), y = r.range(0, 1024); pg.beginPath(); pg.moveTo(x, y); for (let k = 0; k < 4; k++) { x += r.range(-20, 20); y += r.range(-30, 30); pg.lineTo(x, y); } pg.stroke(); }
   pg.fillStyle = 'rgba(0,0,0,0.25)'; for (let y = 0; y < 1024; y += 4) for (let x = (y / 4 % 2) * 2; x < 256; x += 4) pg.fillRect(x, y, 1.2, 1.2);
-  const overlay = new THREE.Mesh(new THREE.PlaneGeometry(ALLEY + 0.01, 1.32), new THREE.MeshBasicMaterial({ map: tex(pc) }));
+  let overlay;
+  if (models) {
+    // 砂っぽい路面：乾いた所はざらざら、濡れた所と水たまりは透けて下の鏡（ネオンの映り込み）が見える
+    const sc = canvas(512, 2048), sg = sc.getContext('2d');
+    sg.fillStyle = 'rgba(70,54,62,0.82)'; sg.fillRect(0, 0, 512, 2048);
+    const img = sg.getImageData(0, 0, 512, 2048), D = img.data;
+    for (let i = 0; i < D.length; i += 4) { const n = (Math.random() - 0.5) * 46; D[i] += n; D[i + 1] += n * 0.9; D[i + 2] += n * 0.8; }
+    sg.putImageData(img, 0, 0);
+    for (let i = 0; i < 2600; i++) { sg.fillStyle = r.pick(['rgba(140,120,110,0.6)', 'rgba(40,30,34,0.6)', 'rgba(170,150,130,0.4)']); sg.fillRect(r.range(0, 512), r.range(0, 2048), r.range(1, 3), r.range(1, 3)); }
+    sg.globalCompositeOperation = 'destination-out';
+    // 真ん中ほど濡れている（轍）
+    for (let i = 0; i < 160; i++) { const x = 256 + r.range(-150, 150) * (r.next() < 0.6 ? 0.6 : 1), y = r.range(0, 2048), rx = r.range(12, 60), ry = r.range(30, 160); const gr = sg.createRadialGradient(x, y, 0, x, y, Math.max(rx, ry)); gr.addColorStop(0, 'rgba(0,0,0,0.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); sg.fillStyle = gr; sg.beginPath(); sg.ellipse(x, y, rx, ry, 0, 0, 7); sg.fill(); }
+    const puddles = [];
+    for (let i = 0; i < 26; i++) { const p = [r.range(40, 472), r.range(0, 2048), r.range(20, 80), r.range(40, 180)]; puddles.push(p); sg.fillStyle = 'rgba(0,0,0,0.95)'; sg.beginPath(); sg.ellipse(...p, 0, 0, 7); sg.fill(); }
+    sg.globalCompositeOperation = 'source-over';
+    sg.strokeStyle = 'rgba(20,11,24,0.85)'; sg.lineWidth = 2.5;
+    for (const p of puddles) { sg.beginPath(); sg.ellipse(...p, 0, 0, 7); sg.stroke(); }
+    const st = tex(sc);
+    overlay = new THREE.Mesh(new THREE.PlaneGeometry(ALLEY + 0.06, 1.32), new THREE.MeshBasicMaterial({ map: st, transparent: true, depthWrite: false }));
+    if (reflect) {
+      const mirror = new Reflector(new THREE.PlaneGeometry(ALLEY + 0.06, 1.32), { textureWidth: 512, textureHeight: 1024, color: 0xffffff });
+      mirror.rotation.x = -Math.PI / 2; mirror.position.set(0, 0.0036, 0.04);
+      wet.add(mirror);
+    } else {
+      // 軽い代わり：ネオンが縦に伸びて映った絵
+      const uc = canvas(256, 1024), ug = uc.getContext('2d');
+      ug.fillStyle = '#1c1426'; ug.fillRect(0, 0, 256, 1024);
+      for (let i = 0; i < 90; i++) { const x = r.range(0, 256), y = r.range(0, 1024), len = r.range(60, 260), col = r.pick(['255,79,163', '79,216,255', '255,178,31', '180,107,255', '255,90,60', '255,220,150']); const gr = ug.createLinearGradient(0, y, 0, y + len); gr.addColorStop(0, `rgba(${col},0)`); gr.addColorStop(0.5, `rgba(${col},0.8)`); gr.addColorStop(1, `rgba(${col},0)`); ug.fillStyle = gr; ug.fillRect(x, y, r.range(3, 14), len); }
+      const under = new THREE.Mesh(new THREE.PlaneGeometry(ALLEY + 0.06, 1.32), new THREE.MeshBasicMaterial({ map: tex(uc) }));
+      under.rotation.x = -Math.PI / 2; under.position.set(0, 0.0036, 0.04); wet.add(under);
+    }
+  } else overlay = new THREE.Mesh(new THREE.PlaneGeometry(ALLEY + 0.01, 1.32), new THREE.MeshBasicMaterial({ map: tex(pc) }));
   overlay.rotation.x = -Math.PI / 2; overlay.position.set(0, 0.0045, 0.04);
   wet.add(overlay);
   // 看板・提灯の光が路面に縦長に映る（加算の帯）

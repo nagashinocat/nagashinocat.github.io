@@ -84,7 +84,7 @@ function halfPlane(map, side) {
   return new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map }));
 }
 
-export function createBook(stage, { works, plans, screens, reducedMotion = false }) {
+export function createBook(stage, { works, plans, screens, parts = null, reducedMotion = false }) {
   const { scene } = stage;
   const speed = reducedMotion ? 5 : 1;
   // 空と遠景
@@ -130,7 +130,7 @@ export function createBook(stage, { works, plans, screens, reducedMotion = false
       const mine = works.filter(w => w.district === k);
       districts[k] = k === 'tools' ? buildFactory(mine, { billboard: screens.tools.tex }, rng(21))
         : k === 'wip' ? buildLot(mine, { billboard: screens.wip.tex }, rng(31))
-        : buildDistrict(plans[k], works, { billboard: screens.games.tex });
+        : buildDistrict(plans[k], works, { billboard: screens.games.tex }, { parts, reflect: stage.tier === 'high' });
       districts[k].visible = false; scene.add(districts[k]);
     }
     return districts[k];

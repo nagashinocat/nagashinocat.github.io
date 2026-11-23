@@ -6,6 +6,7 @@ import { drawClutterStrip } from '../draw/clutter.js';
 import { INK, screentone, crosshatch, inkLine } from '../draw/manga.js';
 import { rng } from '../rng.js';
 import { addKowloon } from './kowloon.js';
+import { toonMaterial, outlineMaterial } from './toon.js';
 
 const H = Math.PI / 2;
 const inkMat = new THREE.LineBasicMaterial({ color: INK });
@@ -110,12 +111,27 @@ export function buildDistrict(plan, works, textures, opts = {}) {
     // 正面の幅 fw と奥行き fd（建物の向きで x/z が入れ替わる）
     const side = b0.face === 'east' || b0.face === 'west';
     const b = { ...b0, fw: side ? b0.d : b0.w, fd: side ? b0.w : b0.d };
-    const { w, h } = facadeSize({ w: b.fw, h: b.h }, plan.kind === 'games' && b.strip === 'inner' ? 1.8 : 1);
-    const c = canvas(w, h);
-    drawFacade(c, { ...b, w: b.fw }, plan.kind, rng(r.int(1, 1e9)));
-    const ft = tex(c);
-    const mesh = box(b, ft, r.pick(roofs));
-    if (b.art) new THREE.TextureLoader().load(b.art, t => { t.colorSpace = THREE.SRGBColorSpace; mesh.material[4].map = t; mesh.material[4].transparent = true; mesh.material[4].needsUpdate = true; });
+    let mesh;
+    if (opts.parts && plan.kind === 'games') {
+      // Meshy の部品を建物の枠に合わせて置く（枠の中心が原点）
+      const P = opts.parts;
+      const pick = b.style === 'billboard' ? P[3] : b.fw < 0.13 ? P[r.pick([0, 1, 6, 3])] : P[r.pick([2, 4, 5, 1, 6])];
+      mesh = new THREE.Group();
+      const tint = new THREE.Color().setHSL(r.range(0.85, 1.08) % 1, r.range(0.12, 0.35), r.range(0.36, 0.5)).multiplyScalar(1.15);
+      const sc = [b.fw / pick.w, b.h, b.fd / pick.d];
+      const model = new THREE.Mesh(pick.geometry, toonMaterial({ seed: r.range(0, 100), tint, scale: sc, cell: [0.017, 0.016], ground: 0.05 }));
+      model.add(new THREE.Mesh(pick.geometry, outlineMaterial(0.0022)));
+      model.scale.set(...sc);
+      model.position.set(0, -b.h / 2, 0);
+      if (r.next() < 0.5 && b.style !== 'billboard') model.rotation.y = Math.PI;
+      mesh.add(model);
+    } else {
+      const { w, h } = facadeSize({ w: b.fw, h: b.h }, plan.kind === 'games' && b.strip === 'inner' ? 1.8 : 1);
+      const c = canvas(w, h);
+      drawFacade(c, { ...b, w: b.fw }, plan.kind, rng(r.int(1, 1e9)));
+      mesh = box(b, tex(c), r.pick(roofs));
+    }
+    if (b.art && mesh.material) new THREE.TextureLoader().load(b.art, t => { t.colorSpace = THREE.SRGBColorSpace; mesh.material[4].map = t; mesh.material[4].transparent = true; mesh.material[4].needsUpdate = true; });
     mesh.position.set(0, b.h / 2, -b.fd / 2);
     // 折り目は建物の正面の下辺。路地を向いて立ち上がる
     const pivot = new THREE.Group();
@@ -173,7 +189,7 @@ export function buildDistrict(plan, works, textures, opts = {}) {
   const decor = new THREE.Group();
   decor.scale.y = 0.001;
   const outline = new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide });
-  for (const d of plan.decor) {
+  for (const d of (opts.parts && plan.kind === 'games') ? plan.decor.filter(d => d.type === 'lantern') : plan.decor) {
     if (d.type === 'duct' || d.type === 'tube' || d.type === 'wire') {
       const rad = d.type === 'duct' ? r.range(0.005, 0.01) : d.type === 'tube' ? r.range(0.002, 0.0048) : 0.0012;
       const curve = tubePath(d, r);
@@ -281,10 +297,10 @@ export function buildDistrict(plan, works, textures, opts = {}) {
   const screenParts = [];
   screen.traverse(o => { if (o.userData.billboard) screenParts.push(o); });
 
-  const extra = plan.kind === 'games' ? addKowloon(root, plan, bmap, decor, r, { pivots, signs }) : null;
+  const extra = plan.kind === 'games' ? addKowloon(root, plan, bmap, decor, r, { pivots, signs, models: !!opts.parts, reflect: opts.reflect }) : null;
   if (extra) { extra.wet.visible = false; }
   root.userData = { kind: plan.kind, pivots, decor, workSigns, signs, screenParts, screenMat, cars, extra,
-    view: plan.kind === 'games' ? { position: new THREE.Vector3(0, 0.04, 0.66), target: new THREE.Vector3(0, 0.6, -0.6), fov: a => a < 0.9 ? 80 : 64 } : null };
+    view: plan.kind === 'games' ? { position: new THREE.Vector3(0, 0.05, 0.68), target: new THREE.Vector3(0, 0.36, -0.6), fov: a => a < 0.9 ? 80 : 64 } : null };
   return root;
 }
 

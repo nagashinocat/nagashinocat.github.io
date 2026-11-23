@@ -62,7 +62,10 @@ async function startCity(works) {
   // 掲示板の画面（ページごとに形が違う）
   const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return { c, tex: t }; };
   const screens = { games: mk(320, 320), tools: mk(480, 300), wip: mk(480, 270) };
-  const book = createBook(stage, { works, plans, screens, reducedMotion });
+  // 九龍城の部品（読めなければ箱の建物で）
+  let parts = null;
+  try { const { loadKowloonParts } = await import('./scene/models.js'); parts = await loadKowloonParts(); } catch (e) { console.warn('部品を読めませんでした', e); }
+  const book = createBook(stage, { works, plans, screens, parts, reducedMotion });
   const billboard = createBillboard(works);
   const selection = createSelection(billboard, { navigate: url => { location.href = url; } });
   const hub = { stage, book, billboard, selection, plans, works, screens, ready: false, selected: null, videoReady: false };
