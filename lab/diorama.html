@@ -12,7 +12,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { paperBuilding, paperBuildingDetailed, paperTank, paperAntenna, paperPipe } from '../js/scene/paper.js';
-import { makeSign, makeSign2, makeSign3 } from '../js/scene/signs.js';
+import { makeSign, makeSign2, makeSign3, bracket } from '../js/scene/signs.js';
+import { chochin } from '../js/scene/alley.js';
 import { groundTextures } from '../js/scene/alley.js';
 import { glowTex } from '../js/scene/parts.js';
 import { rng } from '../js/rng.js';
@@ -59,10 +60,11 @@ const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; 
 }
 // ---- 地面（濡れた路面と、手前の空き地） ----
 {
+  const under = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.6), new THREE.MeshStandardMaterial({ color: '#1a1420', roughness: 1 })); under.rotation.x = -Math.PI / 2; under.position.y = 0.009; scene.add(under);
   const gt = groundTextures(r, 2.1, 1.5);
   const top = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshStandardMaterial({ map: gt.top, transparent: true, depthWrite: false, roughness: 0.6 }));
   top.rotation.x = -Math.PI / 2; top.position.y = 0.012; scene.add(top);
-  const mirror = new Reflector(new THREE.PlaneGeometry(2.1, 1.5), { textureWidth: 1024, textureHeight: 768, color: 0x9a8aa8 });
+  const mirror = new Reflector(new THREE.PlaneGeometry(2.1, 1.5), { textureWidth: 1024, textureHeight: 768, color: 0x5a4a66 });
   mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0.011; scene.add(mirror);
 }
 
@@ -71,29 +73,29 @@ const RUST = ['#7a6a5e', '#6e5e54', '#84705e', '#5e544e', '#8a7866', '#726054'];
 const signColors = ['#ff4fd8', '#ff4fa3', '#ffb21f', '#ff7a2a', '#b46bff', '#4fd8ff'];
 const B = []; // 建物（あとで看板・配管を付ける）
 function block(x, y, z, w, h, d, opts = {}) {
-  const b = (opts.detail ? paperBuildingDetailed : paperBuilding)(w, h, d, r, { sides: false, palette: r.pick(RUST), ground: y > 0.02 ? 0.0 : 0.035 });
+  const b = paperBuildingDetailed(w, h, d, r, { sides: false, palette: r.pick(RUST), ground: y > 0.02 ? 0.0 : 0.035, cheap: true, bare: !opts.near });
   b.position.set(x, 0.012 + y, z + d / 2); b.rotation.y = opts.ry || 0; scene.add(b);
   B.push({ b, x, y, z, w, h, d }); return b;
 }
 // ---- 両側の巨大な塊：中央寄りほど高く、外へ・手前へ段々に下がる。上に小さな箱が積み重なる ----
 for (const side of [-1, 1]) {
-  for (let row = 0; row < 9; row++) {
+  for (let row = 0; row < 7; row++) {
     const z = -0.62 + row * 0.095;
     let x = side * AX;
     while (Math.abs(x) < 1.02) {
       const w = r.range(0.06, 0.12), d = r.range(0.08, 0.1);
       const cx = x + side * w / 2;
       const t = Math.abs(cx) / 1.02;               // 0=中央 1=外
-      const front = (z + 0.62) / 0.86;             // 0=奥 1=手前
+      const front = (z + 0.62) / 0.66;             // 0=奥 1=手前
       const H = (0.62 - t * 0.4) * (1 - front * 0.45) * r.range(0.85, 1.1);
       const nearAve = Math.abs(cx) < AX + 0.16 && front > 0.55;
-      block(cx, 0, z, w, H, d, { detail: nearAve });
+      block(cx, 0, z, w, H, d, { near: row >= 6 || (nearAve && row >= 3) });
       // 上に積む小さな箱（2〜3段）
       let y = H, ww = w, dd = d;
       for (let k = 0; k < r.int(1, 3); k++) {
         ww *= r.range(0.55, 0.85); dd *= r.range(0.6, 0.9); const hh = r.range(0.035, 0.08);
         const ox = r.range(-(w - ww) / 2, (w - ww) / 2), oz = r.range(-(d - dd) / 2, (d - dd) / 2) - (d - dd) / 2;
-        block(cx + ox, y, z + (d - dd) / 2 + oz * 0.5, ww, hh, dd);
+        block(cx + ox, y, z + (d - dd) / 2 + oz * 0.5, ww, hh, dd, {});
         y += hh;
       }
       // 屋上：アンテナ・鉄塔・給水塔
@@ -103,34 +105,56 @@ for (const side of [-1, 1]) {
     }
   }
 }
-// ---- 大通り沿いの正面：縦のネオン看板・大きな配管・1階の店の明かり ----
+// ---- 通路と同じくらいの作り込み：手前を向いた面にも、大通りに向いた面にも看板・提灯・日よけ ----
 {
-  const front = B.filter(o => o.y === 0 && Math.abs(o.x) < AX + 0.14);
+  const N3 = ['猫', 'ながしの猫', 'nagashinocat'];
+  const KINDS = ['neon', 'lightbox', 'marquee', 'round', 'bulbvert', 'shield', 'arrow', 'plank', 'tin', 'pawn', 'neonicon', 'cloth', 'nobori', 'enamel', 'letters', 'led', 'fan'];
+  const S2 = ['shield', 'arrow', 'plank', 'tin', 'pawn', 'bulbvert', 'neonicon'], S3 = ['cloth', 'nobori', 'enamel', 'letters', 'barber', 'led', 'fan'];
+  const mk = (kind, text, color, size) => S3.includes(kind) ? makeSign3(kind, text, color, size, { rng: () => r.next() }) : S2.includes(kind) ? makeSign2(kind, text === 'nagashinocat' && kind === 'shield' ? 'nagashinocat 猫' : text, color, size, { rng: () => r.next() }) : makeSign(kind, text, color, size, { vertical: size[1] > size[0], rng: () => r.next() });
+  const SIZE = (kind, text) => ({ marquee: [0.012 + text.length * 0.0065, 0.018], round: [0.03, 0.03], shield: [0.03, 0.034], arrow: [0.05, 0.016], plank: [0.05, 0.018], tin: [0.022, 0.03], pawn: [0.035, 0.035], bulbvert: [0.02, 0.02 + [...text].length * 0.018], neonicon: [0.032, 0.032], cloth: [0.02, 0.02 + [...text].length * 0.018], nobori: [0.016, 0.07], enamel: [0.045, 0.018], letters: [0.013 * [...text].length, 0.016], led: [0.07, 0.01], fan: [0.05, 0.028] }[kind] || [0.018, 0.02 + [...text].length * 0.014]);
   const used = new Set();
-  for (const o of front) {
-    if (r.next() < 0.55) {
-      const text = r.pick(['猫', 'ながしの猫', 'nagashinocat']); const vertical = r.next() < 0.75;
-      const kind = r.pick(['neon', 'neon', 'bulbvert', 'lightbox', 'round']);
-      const key = kind + text; if (used.has(key) && r.next() < 0.6) continue; used.add(key);
-      const size = kind === 'round' ? [0.035, 0.035] : vertical ? [0.02, 0.03 + [...text].length * 0.014] : [0.02 + text.length * 0.006, 0.02];
-      const sg = kind === 'bulbvert' ? makeSign2(kind, text, r.pick(signColors), size, { rng: () => r.next() }) : makeSign(kind, text, r.pick(signColors), size, { vertical, rng: () => r.next() });
-      if (sg.update) ups.push(sg.update);
-      // 大通りへ向く面（側面）に貼る
-      const sx = o.x > 0 ? -1 : 1;
-      sg.group.position.set(o.x + sx * (o.w / 2 + 0.006), r.range(0.06, Math.min(o.h * 0.8, 0.35)), o.z + o.d / 2);
-      sg.group.rotation.y = sx * Math.PI / 2 * 0.15;
+  const dress = (o, faceX) => {
+    // faceX: 0 なら手前(+z)の面、±1 なら大通りへ向いた側面
+    const n = faceX ? r.int(2, 5) : r.int(1, 4);
+    const span = faceX ? o.d : o.w;
+    for (let k = 0; k < n; k++) {
+      let kind, text, tries = 0;
+      do { kind = r.pick(KINDS); text = r.pick(N3); tries++; } while (used.has(o.x.toFixed(2) + kind + text) && tries < 10);
+      used.add(o.x.toFixed(2) + kind + text);
+      const kk = r.next() < 0.3 ? 1 : r.next() < 0.6 ? 0.75 : 0.55;
+      const size = SIZE(kind, text).map(v => v * kk);
+      const sg = mk(kind, text, r.pick(signColors), size); if (sg.update) ups.push(sg.update);
+      sg.group.traverse(m => { for (const mm of [].concat(m.material || [])) if (mm && mm.toneMapped === false && mm.color) mm.color.multiplyScalar(1.3); });
+      const y = r.range(0.05, Math.max(0.06, Math.min(o.h * 0.85, 0.42) - size[1] / 2));
+      const u = r.range(-span * 0.4, span * 0.4);
+      const project = !['plank', 'tin', 'enamel', 'letters', 'led', 'fan'].includes(kind) && r.next() < 0.75;
+      const out = project ? (kind === 'marquee' ? 0.006 : size[0]) / 2 + 0.01 : 0.004;
+      if (!faceX) { sg.group.position.set(o.x + u, y, o.z + o.d + out); }
+      else { sg.group.position.set(o.x + faceX * (o.w / 2 + out), y, o.z + o.d / 2 + u); if (!project) sg.group.rotation.y = faceX * Math.PI / 2; }
       scene.add(sg.group);
+      if (project) { const arm = bracket(out); if (!faceX) { arm.position.set(o.x + u, y + size[1] / 2 - 0.002, o.z + o.d); } else { arm.position.set(o.x + faceX * o.w / 2, y + size[1] / 2 - 0.002, o.z + o.d / 2 + u); arm.rotation.y = faceX * Math.PI / 2; } scene.add(arm); }
     }
+  };
+  const base = B.filter(o => o.y === 0);
+  const frontRow = new Map();
+  for (const o of base) { const key = Math.round(o.x * 50); if (!frontRow.has(key) || frontRow.get(key).z < o.z) frontRow.set(key, o); }
+  for (const o of frontRow.values()) if (Math.abs(o.x) < 0.95) dress(o, 0);
+  for (const o of base) if (Math.abs(Math.abs(o.x) - o.w / 2 - AX) < 0.01) dress(o, o.x > 0 ? -1 : 1);
+  // 手前の店先：提灯の列と暖かい光
+  for (const o of frontRow.values()) {
+    if (Math.abs(o.x) > 0.9) continue;
+    const n = Math.max(1, Math.floor(o.w / 0.025));
+    if (r.next() < 0.7) for (let k = 0; k < n; k++) { const l = chochin(r); l.scale.setScalar(0.55); l.position.set(o.x - o.w / 2 + (k + 0.5) * o.w / n, 0.05, o.z + o.d + 0.03); scene.add(l); }
+    if (r.next() < 0.6) { const L = new THREE.PointLight(r.pick(['#ffb060', '#ff9040', '#ff70a0']), 0.08, 0.22, 2); L.position.set(o.x, 0.05, o.z + o.d + 0.04); scene.add(L); }
   }
-  // 太い配管を壁に這わせる（建物の正面＝手前を向いた面に）
-  const fronts = B.filter(o => o.y === 0 && o.z > 0.0);
-  for (let i = 0; i < 14; i++) {
-    const o = r.pick(fronts); const x0 = o.x + r.range(-o.w * 0.4, o.w * 0.4), zf = o.z + o.d + 0.006;
-    const top = r.range(0.1, o.h * 0.9), bend = r.range(0.04, 0.12) * (r.next() < 0.5 ? -1 : 1);
-    scene.add(paperPipe([new THREE.Vector3(x0, 0.012, zf), new THREE.Vector3(x0, top, zf), new THREE.Vector3(x0 + bend, top, zf), new THREE.Vector3(x0 + bend, top + 0.06, zf)], r.range(0.004, 0.007), r.pick(['#8a8a8e', '#6a6a70', '#7a5a44'])));
+  // 大通り沿いの提灯
+  for (const sx of [-1, 1]) for (let z = -0.55; z < 0.08; z += r.range(0.03, 0.06)) { if (r.next() < 0.3) continue; const l = chochin(r); l.scale.setScalar(0.5); l.position.set(sx * (AX - 0.012), 0.045, z); scene.add(l); }
+  // 太い配管を手前の面に
+  for (let i = 0; i < 16; i++) {
+    const o = r.pick([...frontRow.values()]); const x0 = o.x + r.range(-o.w * 0.4, o.w * 0.4), zf = o.z + o.d + 0.008;
+    const top = r.range(0.1, Math.min(o.h * 0.9, 0.45)), bend = r.range(0.04, 0.1) * (r.next() < 0.5 ? -1 : 1);
+    scene.add(paperPipe([new THREE.Vector3(x0, 0.012, zf), new THREE.Vector3(x0, top, zf), new THREE.Vector3(x0 + bend, top, zf), new THREE.Vector3(x0 + bend, top + 0.05, zf)], r.range(0.004, 0.006), r.pick(['#8a8a8e', '#6a6a70', '#7a5a44'])));
   }
-  // 1階の店先の暖かい光
-  for (const o of B.filter(o => o.y === 0 && o.z > -0.3 && Math.abs(o.x) < 0.7)) if (r.next() < 0.5) { const L = new THREE.PointLight(r.pick(['#ffb060', '#ff9040', '#ff70a0']), 0.06, 0.18, 2); L.position.set(o.x, 0.04, o.z + o.d + 0.02); scene.add(L); }
 }
 // ---- 奥の丸いタワー（路地の突き当たりと同じビル） ----
 {
@@ -178,8 +202,8 @@ for (let i = 0; i < 16; i++) {
   const st = P(c);
   for (let i = 0; i < 26; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: st, transparent: true, opacity: 0.3, depthWrite: false })); const side = r.pick([-1, 1]); s.position.set(side * r.range(0.2, 1.0), r.range(0.03, 0.12), r.range(-0.1, 0.25)); s.scale.setScalar(r.range(0.12, 0.3)); scene.add(s); }
 }
-const cam = new THREE.PerspectiveCamera(46, innerWidth / innerHeight, 0.01, 30);
-cam.position.set(0, 0.2, 1.42); cam.lookAt(0, 0.36, -0.5);
+const cam = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.01, 30);
+cam.position.set(0, 0.12, 0.98); cam.lookAt(0, 0.36, -0.5);
 const comp = new EffectComposer(renderer);
 comp.addPass(new RenderPass(scene, cam));
 comp.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.8, 0.6, 0.85));

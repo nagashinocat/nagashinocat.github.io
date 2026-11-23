@@ -228,8 +228,10 @@ export function paperBuilding(w, h, d, r, opts = {}) {
 }
 
 // ================= 紙の部品 =================
+const _colM = {};
+const sharedColor = (c, ds = false) => (_colM[c + ds] ??= new THREE.MeshStandardMaterial({ color: c, roughness: 0.95, side: ds ? THREE.DoubleSide : THREE.FrontSide }));
 const paperMat = (map, opts = {}) => new THREE.MeshStandardMaterial({ map, roughness: 0.95, metalness: 0, ...opts });
-const edgeMat = new THREE.LineBasicMaterial({ color: '#d8cdbb', transparent: true, opacity: 0.32 });
+const edgeMat = new THREE.LineBasicMaterial({ color: '#d8cdbb', transparent: true, opacity: 0.14 });
 const withEdges = (mesh, thresh = 30) => { mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, thresh), edgeMat)); return mesh; };
 const cache = {};
 function printed(key, w, h, draw) {
@@ -251,13 +253,15 @@ function acTextures() {
   const side = printed('ac-side', 64, 64, (g, W, H) => { g.fillStyle = '#c8c2b4'; g.fillRect(0, 0, W, H); g.strokeStyle = INK; g.lineWidth = 3; g.strokeRect(1, 1, W - 2, H - 2); g.lineWidth = 1; for (let y = 10; y < H; y += 6) { g.beginPath(); g.moveTo(6, y); g.lineTo(W - 6, y); g.stroke(); } });
   return { front, side };
 }
+let _acM = null;
 export function paperAC(r) {
   const t = acTextures();
-  const side = paperMat(t.side), front = paperMat(t.front);
+  _acM ??= { side: paperMat(t.side), front: paperMat(t.front), leg: paperMat(null, { color: '#3a3030' }) };
+  const { side, front } = _acM;
   const m = withEdges(new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.015, 0.014), [side, side, side, side, front, side]));
   const g = new THREE.Group(); g.add(m);
   // 支えの金具
-  for (const sx of [-1, 1]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.002, 0.002, 0.016), paperMat(null, { color: '#3a3030' })); b.position.set(sx * 0.008, -0.0085, 0); g.add(b); }
+  for (const sx of [-1, 1]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.002, 0.002, 0.016), _acM.leg); b.position.set(sx * 0.008, -0.0085, 0); g.add(b); }
   return g;
 }
 // 鉄格子のかご：格子をくり抜いた紙の箱
@@ -269,16 +273,17 @@ function cageTexture() {
     g.fillStyle = 'rgba(120,60,30,0.6)'; for (let i = 0; i < 30; i++) g.fillRect(Math.random() * W, Math.random() * H, 3, 3);
   });
 }
-export function paperCage(w, h, d, r) {
+let _cageM = null;
+export function paperCage(w, h, d, r, opts = {}) {
   const t = cageTexture();
-  const bars = paperMat(t, { transparent: true, alphaTest: 0.5, side: THREE.DoubleSide });
-  const floor = paperMat(null, { color: '#4a3a34' });
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [bars, bars, paperMat(null, { color: '#3a2a28' }), floor, bars, null].map(x => x || bars));
+  _cageM ??= { bars: paperMat(t, { transparent: true, alphaTest: 0.5, side: THREE.DoubleSide }), floor: paperMat(null, { color: '#4a3a34' }), top: paperMat(null, { color: '#3a2a28' }) };
+  const { bars, floor } = _cageM;
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [bars, bars, _cageM.top, floor, bars, bars]);
   m.position.z = d / 2;
   const g = new THREE.Group(); g.add(m);
   // 中の物（植木鉢・段ボール・洗濯物）
-  if (r.next() < 0.6) { const b = new THREE.Mesh(new THREE.BoxGeometry(w * 0.3, h * 0.25, d * 0.5), paperMat(null, { color: r.pick(['#8a6a4a', '#5a7a4a', '#c8b89a', '#6a5a8a']) })); b.position.set(r.range(-w * 0.25, w * 0.25), -h / 2 + h * 0.13, d * 0.4); g.add(withEdges(b)); }
-  if (r.next() < 0.4) for (let k = 0; k < 3; k++) { const c = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.22, h * 0.35), paperMat(null, { color: r.pick(['#f0ece4', '#e88aa8', '#8ac4e8', '#f0d070']), side: THREE.DoubleSide })); c.position.set(-w * 0.3 + k * w * 0.3, h * 0.15, d * 0.6); g.add(c); }
+  if (!opts.light && r.next() < 0.6) { const b = new THREE.Mesh(new THREE.BoxGeometry(w * 0.3, h * 0.25, d * 0.5), sharedColor(r.pick(['#8a6a4a', '#5a7a4a', '#c8b89a', '#6a5a8a']))); b.position.set(r.range(-w * 0.25, w * 0.25), -h / 2 + h * 0.13, d * 0.4); g.add(b); }
+  if (!opts.light && r.next() < 0.4) for (let k = 0; k < 3; k++) { const c = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.22, h * 0.35), sharedColor(r.pick(['#f0ece4', '#e88aa8', '#8ac4e8', '#f0d070']), true)); c.position.set(-w * 0.3 + k * w * 0.3, h * 0.15, d * 0.6); g.add(c); }
   return g;
 }
 // 配管：角ばった紙の筒（印刷の錆）
@@ -353,16 +358,47 @@ export function paperAntenna(r) {
  * 正面の窓に合わせて：鉄格子のかご・室外機、柱、各階の張り出し、雨どい、屋上の給水塔・アンテナ・小屋、1階の日よけ
  */
 export function paperBuildingDetailed(w, h, d, r, opts = {}) {
-  const windows = [];
-  const front = drawPaperFace(w, h, 'front', r, { ...opts, flat: false, windows });
-  const lo = { ...opts, ppu: 500, max: 512 };
-  const faces = { front, back: drawPaperFace(w, h, 'side', r, lo), right: drawPaperFace(d, h, 'side', r, lo), left: drawPaperFace(d, h, 'side', r, lo), roof: drawPaperFace(w, d, 'roof', r, { ...opts, ppu: 1200, max: 1024 }) };
-  const mat = f => new THREE.MeshStandardMaterial({ map: tex(f.color), emissiveMap: tex(f.emit), emissive: 0xffffff, emissiveIntensity: 0.16, roughness: 0.92 });
-  const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [mat(faces.right), mat(faces.left), mat(faces.roof), new THREE.MeshStandardMaterial({ color: '#2a2224' }), mat(faces.front), mat(faces.back)]);
+  let windows = [];
+  let box;
+  if (opts.cheap) {
+    // 建物が多いとき：決まった大きさの絵を何枚か作って使い回し、面の大きさに合わせて並べて貼る
+    const TW = 0.136, TH = 0.264; // 4列×6階ぶん
+    const key = 'pool' + (opts.palette || '');
+    cache[key] ??= Array.from({ length: 3 }, () => {
+      const wins = [];
+      const f = drawPaperFace(TW, TH, 'front', r, { ...opts, flat: false, windows: wins, ground: 0, ppu: 1100, max: 512 });
+      const ct = tex(f.color), et = tex(f.emit);
+      for (const t of [ct, et]) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      return { mat: new THREE.MeshStandardMaterial({ map: ct, emissiveMap: et, emissive: 0xffffff, emissiveIntensity: 0.16, roughness: 0.92 }), wins };
+    });
+    const sideKey = 'cheapRoof';
+    cache[sideKey] ??= tex(drawPaperFace(0.12, 0.12, 'roof', r, { ...opts, ppu: 600, max: 256 }).color);
+    cache.roofM ??= new THREE.MeshStandardMaterial({ map: cache[sideKey], roughness: 1 });
+    const P = r.pick(cache[key]);
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const uv = geo.attributes.uv;
+    // 面ごとに大きさに合わせて繰り返す（右左: d×h、上下: w×d、前後: w×h）
+    const sz = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+    for (let f = 0; f < 6; f++) for (let i = f * 4; i < f * 4 + 4; i++) uv.setXY(i, uv.getX(i) * sz[f][0] / TW, uv.getY(i) * sz[f][1] / TH);
+    box = new THREE.Mesh(geo, [P.mat, P.mat, cache.roofM, sharedColor('#2a2224'), P.mat, P.mat]);
+    // 窓の位置（使い回した絵を並べた分）
+    const nx = Math.ceil(w / TW), ny = Math.ceil(h / TH);
+    for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) for (const wn of P.wins) {
+      const x = -w / 2 + i * TW + wn.x + TW / 2, y = j * TH + wn.y;
+      if (Math.abs(x) < w / 2 - wn.w / 2 && y < h - 0.01) windows.push({ ...wn, x, y });
+    }
+  } else {
+    const front = drawPaperFace(w, h, 'front', r, { ...opts, flat: false, windows });
+    const mat = f => new THREE.MeshStandardMaterial({ map: tex(f.color), emissiveMap: tex(f.emit), emissive: 0xffffff, emissiveIntensity: 0.16, roughness: 0.92 });
+    const lo = { ...opts, ppu: 500, max: 512 };
+    const faces = { back: drawPaperFace(w, h, 'side', r, lo), right: drawPaperFace(d, h, 'side', r, lo), left: drawPaperFace(d, h, 'side', r, lo), roof: drawPaperFace(w, d, 'roof', r, { ...opts, ppu: 1200, max: 1024 }) };
+    box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [mat(faces.right), mat(faces.left), mat(faces.roof), new THREE.MeshStandardMaterial({ color: '#2a2224' }), mat(front), mat(faces.back)]);
+  }
   box.position.set(0, h / 2, -d / 2);
-  const g = new THREE.Group(); g.add(withEdges(box));
+  const g = new THREE.Group(); g.add(opts.bare ? box : withEdges(box));
+  if (opts.bare) { g.userData = { windows, w, h, d }; return g; }
   const colTex = concreteTex('col' + (opts.palette || ''), opts.palette || '#8a7a70');
-  const cm = paperMat(colTex);
+  const cm = (cache['cm' + (opts.palette || '')] ??= paperMat(colTex));
   // 柱：両端と、ときどき間に
   const cols = [-w / 2 + 0.005, w / 2 - 0.005]; if (w > 0.14) cols.push(r.range(-w * 0.2, w * 0.2));
   for (const x of cols) { const c = withEdges(new THREE.Mesh(new THREE.BoxGeometry(0.01, h, 0.008), cm)); c.position.set(x, h / 2, 0.004); g.add(c); }
@@ -374,8 +410,8 @@ export function paperBuildingDetailed(w, h, d, r, opts = {}) {
   }
   // 窓まわりの立体：鉄格子・室外機
   for (const wn of windows) {
-    const t = r.next();
-    if (t < 0.4) { const c = paperCage(wn.w * 1.25, wn.h * 1.3, 0.012, r); c.position.set(wn.x, wn.y, 0); g.add(c); }
+    const t = opts.cheap ? r.next() * 1.4 : r.next();
+    if (t < 0.4) { const c = paperCage(wn.w * 1.25, wn.h * 1.3, 0.012, r, { light: opts.cheap }); c.position.set(wn.x, wn.y, 0); g.add(c); }
     else if (t < 0.65) { const a = paperAC(r); a.position.set(wn.x + wn.w * 0.6, wn.y - wn.h * 0.35, 0.008); g.add(a); }
   }
   // 雨どい

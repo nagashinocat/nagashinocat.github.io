@@ -5,7 +5,7 @@ const [, , path, out, w = 1600, h = 600] = process.argv;
 const srv = await serve();
 const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const p = await b.newPage({ viewport: { width: +w, height: +h } });
-p.on('pageerror', e => console.log('ERR', e.message)); p.on('console', m => m.type() === 'error' && console.log('CONSOLE', m.text()));
+p.on('pageerror', e => console.log('ERR', e.message)); p.on('crash', () => console.log('CRASH')); p.on('console', m => console.log('CONSOLE', m.type(), m.text().slice(0, 200)));
 await routeThree(p);
 await p.goto(srv.url + path);
 await p.waitForFunction(() => document.title === 'ready', null, { timeout: 120000 });
