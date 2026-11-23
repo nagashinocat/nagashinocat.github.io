@@ -1,0 +1,81 @@
+:root {
+  --ink: #140b18;
+  --paper: #f3ead6;
+  --pink: #ff4fa3;
+  --cyan: #4fd8ff;
+  --amber: #ffb21f;
+  --night: #1b1024;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; min-width: 0; }
+html, body { margin: 0; height: 100%; background: var(--ink); color: var(--paper); overflow: hidden;
+  font: 500 16px/1.6 "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", sans-serif; -webkit-tap-highlight-color: transparent; }
+#app { position: fixed; inset: 0; touch-action: none; }
+#app canvas { display: block; }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+/* 漫画のコマっぽい部品：墨の太枠＋ずらした影 */
+.btn { background: var(--paper); color: var(--ink); border: 3px solid var(--ink); border-radius: 10px;
+  padding: 8px 14px; min-height: 44px; font-weight: 700; box-shadow: 3px 3px 0 var(--ink); }
+.btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+.btn:focus-visible, .play:focus-visible, .card a:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
+.btn.round { width: 52px; height: 52px; padding: 0; border-radius: 50%; font-size: 18px; }
+.btn:disabled { opacity: .45; }
+
+.top { position: fixed; top: calc(var(--safe-t) + 10px); left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; pointer-events: none; z-index: 5; }
+.top > * { pointer-events: auto; }
+.logo { margin: 0; font: 400 clamp(20px, 5vw, 30px)/1.05 "Dela Gothic One", sans-serif; color: #fff;
+  text-shadow: 3px 3px 0 var(--ink), -1px -1px 0 var(--ink), 1px -1px 0 var(--ink), -1px 1px 0 var(--ink), 0 0 14px var(--pink); letter-spacing: .02em; }
+.logo small { display: block; font-size: .55em; margin-top: 4px; color: var(--amber); }
+
+.loading { position: fixed; inset: 0; display: grid; place-items: center; z-index: 4; pointer-events: none; transition: opacity .6s; }
+.loading p { font: 400 18px "DotGothic16", monospace; color: var(--amber); background: rgba(20,11,24,.85); padding: 8px 16px; border: 2px solid var(--amber); border-radius: 6px; animation: blink 1s steps(2) infinite; }
+.loading.done { opacity: 0; }
+@keyframes blink { 50% { opacity: .4; } }
+
+.hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + 84px); margin: 0; z-index: 5;
+  background: var(--paper); color: var(--ink); border: 3px solid var(--ink); border-radius: 18px; padding: 6px 14px; font-size: 14px; font-weight: 700;
+  white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; pointer-events: none; transition: opacity .4s; }
+.hint::after { content: ""; position: absolute; left: 50%; bottom: -12px; border: 8px solid transparent; border-top-color: var(--ink); transform: translateX(-50%); }
+
+.play { position: fixed; left: 50%; bottom: calc(var(--safe-b) + 84px); transform: translateX(-50%); z-index: 6;
+  background: var(--pink); color: #fff; border: 3px solid var(--ink); border-radius: 12px; box-shadow: 4px 4px 0 var(--ink);
+  padding: 10px 18px; min-height: 48px; font: 400 17px/1.2 "Dela Gothic One", sans-serif; max-width: calc(100vw - 24px);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 2px 2px 0 var(--ink); }
+.play.wip { background: #6b6470; }
+
+.turn { position: fixed; left: 0; right: 0; bottom: calc(var(--safe-b) + 14px); display: flex; justify-content: center; align-items: center; gap: 14px; z-index: 5; pointer-events: none; }
+.turn > * { pointer-events: auto; }
+.pageinfo { background: var(--ink); border: 3px solid var(--paper); border-radius: 10px; padding: 4px 16px; text-align: center; min-width: 120px; }
+.pageinfo span { display: block; font: 400 20px/1.2 "Dela Gothic One", sans-serif; color: #fff; }
+.pageinfo small { display: block; font-size: 13px; color: var(--amber); }
+
+/* 作品いちらん */
+.list { position: fixed; inset: 0; z-index: 10; overflow-y: auto; overflow-x: hidden; background: var(--night);
+  background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1.4px); background-size: 6px 6px;
+  padding: calc(var(--safe-t) + 16px) 16px calc(var(--safe-b) + 32px); }
+.list[hidden] { display: none; }
+.list-head { display: flex; justify-content: space-between; align-items: center; max-width: 980px; margin: 0 auto 8px; }
+.list h2 { margin: 0; font: 400 26px "Dela Gothic One", sans-serif; color: #fff; text-shadow: 2px 2px 0 var(--ink); }
+.list h4 { max-width: 980px; margin: 26px auto 10px; font: 400 18px "Dela Gothic One", sans-serif; color: var(--amber); }
+.list h4 small { font: 500 13px "Zen Kaku Gothic New", sans-serif; color: #cbb; margin-left: 8px; }
+.cards { max-width: 980px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 14px; }
+.card { background: var(--paper); color: var(--ink); border: 3px solid var(--ink); border-radius: 12px; box-shadow: 4px 4px 0 #000; padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 6px; position: relative; overflow: hidden; }
+.card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 8px; background: var(--c, var(--pink)); border-right: 2px solid var(--ink); }
+.card > * { margin-left: 8px; }
+.card h3 { margin: 0; font: 700 18px/1.4 "Zen Kaku Gothic New", sans-serif; overflow-wrap: anywhere; }
+.card p { margin: 0; font-size: 14px; color: #3a3040; }
+.card a, .card .soon { align-self: flex-start; margin-top: 4px; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 3px solid var(--ink); border-radius: 10px; font-weight: 700; text-decoration: none; }
+.card a { background: var(--ink); color: #fff; }
+.card .soon { background: repeating-linear-gradient(-45deg, #ffd400 0 10px, var(--ink) 10px 20px); color: #fff; text-shadow: 1px 1px 0 var(--ink), -1px -1px 0 var(--ink); }
+.card .new { position: absolute; top: 8px; right: 10px; background: var(--pink); color: #fff; font-size: 12px; padding: 0 6px; border: 2px solid var(--ink); border-radius: 4px; }
+.list.solo .list-head button { display: none; }
+.noscript { padding: 20px; }
+
+@media (max-width: 600px) {
+  .btn { padding: 6px 10px; font-size: 14px; }
+  .pageinfo { min-width: 104px; padding: 3px 10px; }
+  .pageinfo span { font-size: 17px; }
+}
+@media (prefers-reduced-motion: reduce) { .loading p { animation: none; } }

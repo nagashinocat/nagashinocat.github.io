@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>nagashinocat の開発置き場</title>
+<meta name="description" content="飛び出す絵本の街から、nagashinocat の作ったゲームや道具で遊べる開発置き場。">
+<meta property="og:title" content="nagashinocat の開発置き場">
+<meta property="og:description" content="本を開くと、ネオンの街がにょきにょき生えてくる。看板から作品で遊べます。">
+<meta property="og:image" content="https://nagashinocat.github.io/assets/ogp.png">
+<meta property="og:url" content="https://nagashinocat.github.io/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#140b18">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app" aria-hidden="true"></div>
+
+<header class="top">
+  <h1 class="logo">nagashinocat<small>の開発置き場</small></h1>
+  <button id="open-list" class="btn">作品いちらん</button>
+</header>
+
+<div id="loading" class="loading"><p>ひらいています…</p></div>
+
+<p id="hint" class="hint" hidden></p>
+
+<button id="play" class="play" hidden></button>
+
+<nav class="turn" id="turn" hidden>
+  <button id="prev" class="btn round" aria-label="前のページ">◀</button>
+  <div class="pageinfo"><span id="district-name">繁華街</span><small id="district-sub">ゲーム</small></div>
+  <button id="next" class="btn round" aria-label="次のページ">▶</button>
+</nav>
+
+<section id="list" class="list" hidden aria-label="作品いちらん">
+  <div class="list-head">
+    <h2>作品いちらん</h2>
+    <button id="close-list" class="btn" aria-label="閉じる">とじる</button>
+  </div>
+  <div id="list-body"></div>
+</section>
+
+<noscript><p class="noscript">このページは JavaScript を使います。</p></noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

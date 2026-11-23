@@ -1,5 +1,6 @@
 // サイト本体の確認（Task 6 以降で追加していく）
 import { readFile } from 'node:fs/promises';
+import { chromium } from 'playwright';
 const THREE_DIR = '/tmp/three/node_modules/three/';
 export async function routeThree(page) {
   await page.route(/cdn\.jsdelivr\.net\/npm\/three@0\.170\.0\/(.*)/, async route => {
@@ -19,6 +20,8 @@ export async function openPage({ browser, srv }, path, viewport, opts = {}) {
 }
 export async function run(ctx) {
   const { check, assert, OUT } = ctx;
+  if (!process.argv.includes('--scene-only')) await runSite(ctx);
+  if (process.argv.includes('--site-only')) return;
   for (const [name, vp] of [['phone', { width: 390, height: 844 }], ['pc', { width: 1280, height: 800 }]]) {
     const { page, errs } = await openPage(ctx, '/tests/e2e/scene.html', vp);
     await check(`scene ${name}: 本が開く`, async () => { await page.waitForFunction(() => document.title === 'opened', null, { timeout: 60000 }); });
@@ -52,5 +55,61 @@ export async function run(ctx) {
       await page.screenshot({ path: `${OUT}scene-wip.png` });
     }
     await page.close();
+  }
+}
+
+async function runSite(ctx) {
+  const { check, assert, OUT } = ctx;
+  // 本体：スマホと PC
+  for (const [name, vp] of [['phone', { width: 390, height: 844 }], ['pc', { width: 1280, height: 800 }]]) {
+    const { page, errs } = await openPage(ctx, '/', vp, { hasTouch: name === 'phone' });
+    await check(`site ${name}: 本が開いて操作できる`, () => page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 60000 }));
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: `${OUT}site-${name}.png` });
+    await check(`site ${name}: コンソールエラー 0`, () => assert(errs.length === 0, errs.join(' / ')));
+    await check(`site ${name}: めくりボタンで工場街へ`, async () => {
+      await page.click('#next');
+      await page.waitForFunction(() => window.__hub.book.current === 'tools' && !window.__hub.book.busy, null, { timeout: 20000 });
+      const label = await page.textContent('#district-name');
+      assert(label.includes('工場街'), label);
+    });
+    await page.screenshot({ path: `${OUT}site-${name}-tools.png` });
+    await check(`site ${name}: 一覧が開いてリンクが正しい`, async () => {
+      await page.click('#open-list');
+      await page.waitForSelector('#list:not([hidden])');
+      const href = await page.getAttribute('#list a[href="/aiaigasa/"]', 'href');
+      assert(href === '/aiaigasa/', href);
+    });
+    await page.close();
+  }
+  // 幅 360 ではみ出さない、長い題は折り返す
+  {
+    const { page } = await openPage(ctx, '/', { width: 360, height: 740 }, { hasTouch: true });
+    await page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 60000 });
+    await page.click('#open-list');
+    await page.screenshot({ path: `${OUT}site-360-list.png`, fullPage: true });
+    await check('360px: 横にはみ出さない', async () => {
+      const w = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.querySelector('#list').scrollWidth));
+      assert(w <= 360, String(w));
+    });
+    await check('360px: 長い題が折り返す', async () => {
+      const lines = await page.evaluate(() => { const el = [...document.querySelectorAll('#list h3')].find(h => h.textContent.startsWith('鉛筆削り')); const lh = parseFloat(getComputedStyle(el).lineHeight); return el.getBoundingClientRect().height / lh; });
+      assert(lines >= 1.9, String(lines));
+    });
+    await page.close();
+  }
+  // WebGL なし → 一覧が本体
+  {
+    const b = await chromium.launch({ args: ['--disable-webgl', '--disable-3d-apis'] });
+    const page = await b.newPage({ viewport: { width: 390, height: 844 } });
+    await routeThree(page);
+    const errs = []; page.on('pageerror', e => errs.push(e.message));
+    await page.goto(ctx.srv.url + '/');
+    await check('WebGLなし: 一覧が見えてリンクが正しい', async () => {
+      await page.waitForSelector('#list:not([hidden]) a[href="/aiaigasa/"]', { timeout: 15000 });
+    });
+    await check('WebGLなし: 未捕捉エラーなし', () => assert(errs.length === 0, errs.join(' / ')));
+    await page.screenshot({ path: `${OUT}site-nowebgl.png` });
+    await b.close();
   }
 }
