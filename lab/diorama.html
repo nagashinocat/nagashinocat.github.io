@@ -56,7 +56,7 @@ const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; 
   // 遠くの摩天楼（ピンクと青のネオンの縁）
   for (let x = 0; x < 2048;) { const w = 30 + Math.random() * 70, h = 150 + Math.random() * 420, y = 900 - h; g.fillStyle = Math.random() < 0.5 ? '#16123a' : '#1e1648'; g.fillRect(x, y, w, h); const col = Math.random() < 0.5 ? '#ff4fd8' : '#4fc8ff'; g.fillStyle = col; g.fillRect(x, y, w, 3); g.fillRect(x + w / 2 - 1, y - 30, 2, 30); for (let yy = y + 10; yy < 890; yy += 12) for (let xx = x + 4; xx < x + w - 4; xx += 8) if (Math.random() < 0.35) { g.fillStyle = Math.random() < 0.7 ? 'rgba(120,180,255,0.7)' : 'rgba(255,120,220,0.7)'; g.fillRect(xx, yy, 4, 5); } x += w + Math.random() * 10; }
   const m = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.15), new THREE.MeshBasicMaterial({ map: P(c), toneMapped: false, color: new THREE.Color(0.9, 0.9, 0.9) }));
-  m.position.set(0, 0.56, -0.8); scene.add(m);
+  m.position.set(0, 0.84, -0.8); scene.add(m);
 }
 // ---- 地面（濡れた路面と、手前の空き地） ----
 {
@@ -65,7 +65,11 @@ const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; 
   const top = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshStandardMaterial({ map: gt.top, transparent: true, depthWrite: false, roughness: 0.6 }));
   top.rotation.x = -Math.PI / 2; top.position.y = 0.012; scene.add(top);
   const mirror = new Reflector(new THREE.PlaneGeometry(2.1, 1.5), { textureWidth: 1024, textureHeight: 768, color: 0x5a4a66 });
-  mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0.011; scene.add(mirror);
+  mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0.011; if (!location.search.includes('nomirror')) scene.add(mirror);
+  // 大通りの路面：濡れたアスファルトを少し透かす（空が映りすぎないように）
+  const [ac, ag] = cv(64, 512); ag.fillStyle = 'rgba(26,18,30,0.86)'; ag.fillRect(0, 0, 64, 512);
+  ag.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 30; i++) { const x = Math.random() * 64, y = Math.random() * 512, rr = 4 + Math.random() * 14; const gr = ag.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, 'rgba(0,0,0,0.7)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); ag.fillStyle = gr; ag.fillRect(x - rr, y - rr, rr * 2, rr * 2); }
+  const ave = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 1.4), new THREE.MeshBasicMaterial({ map: P(ac), transparent: true, depthWrite: false })); ave.rotation.x = -Math.PI / 2; ave.position.set(0, 0.0125, -0.05); scene.add(ave);
 }
 
 const AX = 0.075; // 真ん中の大通りの半幅
