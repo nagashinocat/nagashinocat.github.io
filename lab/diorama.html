@@ -29,7 +29,7 @@ scene.background = new THREE.Color('#0a0610');
 scene.fog = new THREE.FogExp2('#2a1640', 0.35);
 scene.add(new THREE.HemisphereLight('#4a3a7a', '#1a0c14', 0.3));
 const desk = new THREE.DirectionalLight('#ffd8a8', 0.35); desk.position.set(-3, 5, 4); scene.add(desk);
-const fill = new THREE.DirectionalLight('#ff9ac8', 0.55); fill.position.set(0, 0.6, 3); scene.add(fill);
+const fill = new THREE.DirectionalLight('#ff9ac8', 0.35); fill.position.set(0, 0.6, 3); scene.add(fill);
 const fillL = new THREE.DirectionalLight('#7a8aff', 0.35); fillL.position.set(-3, 1, 1); scene.add(fillL);
 const P = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
 const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; };
@@ -64,12 +64,12 @@ const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; 
   const gt = groundTextures(r, 2.1, 1.5);
   const top = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshStandardMaterial({ map: gt.top, transparent: true, depthWrite: false, roughness: 0.6 }));
   top.rotation.x = -Math.PI / 2; top.position.y = 0.012; scene.add(top);
-  const mirror = new Reflector(new THREE.PlaneGeometry(2.1, 1.5), { textureWidth: 1024, textureHeight: 768, color: 0x5a4a66 });
+  const mirror = new Reflector(new THREE.PlaneGeometry(2.1, 1.5), { textureWidth: 1024, textureHeight: 768, color: 0x6a5a78 });
   mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0.011; if (!location.search.includes('nomirror')) scene.add(mirror);
   // 大通りの路面：濡れたアスファルトを少し透かす（空が映りすぎないように）
   const [ac, ag] = cv(64, 512); ag.fillStyle = 'rgba(26,18,30,0.86)'; ag.fillRect(0, 0, 64, 512);
   ag.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 30; i++) { const x = Math.random() * 64, y = Math.random() * 512, rr = 4 + Math.random() * 14; const gr = ag.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, 'rgba(0,0,0,0.7)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); ag.fillStyle = gr; ag.fillRect(x - rr, y - rr, rr * 2, rr * 2); }
-  const ave = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshBasicMaterial({ map: P(ac), transparent: true, depthWrite: false, opacity: 0.55 })); ave.rotation.x = -Math.PI / 2; ave.position.set(0, 0.0125, 0); scene.add(ave);
+  const ave = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshBasicMaterial({ map: P(ac), transparent: true, depthWrite: false, opacity: 0.7 })); ave.rotation.x = -Math.PI / 2; ave.position.set(0, 0.0125, 0); scene.add(ave);
 }
 
 const AX = 0.075; // 真ん中の大通りの半幅
@@ -107,7 +107,7 @@ for (const side of [-1, 1]) {
       const cx = x + side * w / 2;
       const t = Math.abs(cx) / 1.02;               // 0=中央 1=外
       const front = (z + 0.62) / 0.66;             // 0=奥 1=手前
-      const H = (0.62 - t * 0.4) * (1 - front * 0.45) * r.range(0.85, 1.1);
+      const H = (0.82 - t * 0.55) * (1 - front * 0.4) * r.range(0.85, 1.12);
       const nearAve = Math.abs(cx) < AX + 0.16 && front > 0.55;
       block(cx, 0, z, w, H, d, { near: row >= 6 || (nearAve && row >= 3) });
       // 上に積む小さな箱（2〜3段）
@@ -215,10 +215,10 @@ for (let i = 0; i < 16; i++) {
     for (let k = -2; k <= 2; k++) { const post = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.15, 6), new THREE.MeshStandardMaterial({ color: '#3a2a22' })); post.position.set(x + Math.cos(ry) * k * len / 4, 0.075, z - Math.sin(ry) * k * len / 4); post.rotation.z = r.range(-0.2, 0.2); scene.add(post); }
   }
   for (const [x, z, col] of [[-0.3, 0.68, '#6a4a32'], [0.42, 0.66, '#8a3a1e'], [0.5, 0.68, '#3a4a6a']]) { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.06, 16), new THREE.MeshStandardMaterial({ color: col, roughness: 0.8 })); b.position.set(x, 0.042, z); scene.add(b); }
-  for (let i = 0; i < 10; i++) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, r.range(0.12, 0.28)), new THREE.MeshStandardMaterial({ color: '#4a3020' })); p.position.set(r.pick([-1, 1]) * r.range(0.55, 0.95), 0.03, r.range(0.5, 0.72)); p.rotation.set(r.range(-0.8, 0.8), r.range(0, 3), r.range(-0.4, 0.4)); scene.add(p); }
-  const blade = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.003, 0.025).translate(0, 0.0125, 0), new THREE.MeshStandardMaterial({ color: '#3a4a2a', side: THREE.DoubleSide }), 400);
+  for (let i = 0; i < 22; i++) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, r.range(0.12, 0.28)), new THREE.MeshStandardMaterial({ color: '#4a3020' })); p.position.set(r.pick([-1, 1]) * r.range(0.55, 0.95), 0.03, r.range(0.5, 0.72)); p.rotation.set(r.range(-0.8, 0.8), r.range(0, 3), r.range(-0.4, 0.4)); scene.add(p); }
+  const blade = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.003, 0.025).translate(0, 0.0125, 0), new THREE.MeshStandardMaterial({ color: '#3a4a2a', side: THREE.DoubleSide }), 900);
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), E = new THREE.Euler();
-  for (let i = 0; i < 400; i++) { const x = r.pick([-1, 1]) * r.range(0.4, 1.0), z = r.range(0.48, 0.76); Q.setFromEuler(E.set(r.range(-0.4, 0.4), r.range(0, 6), r.range(-0.4, 0.4))); M.compose(new THREE.Vector3(x, 0.012, z), Q, new THREE.Vector3(1, r.range(0.6, 1.8), 1)); blade.setMatrixAt(i, M); }
+  for (let i = 0; i < 900; i++) { const x = r.pick([-1, 1]) * r.range(0.25, 1.0), z = r.range(0.3, 0.78); Q.setFromEuler(E.set(r.range(-0.4, 0.4), r.range(0, 6), r.range(-0.4, 0.4))); M.compose(new THREE.Vector3(x, 0.012, z), Q, new THREE.Vector3(1, r.range(0.6, 1.8), 1)); blade.setMatrixAt(i, M); }
   scene.add(blade);
 }
 // ---- 湯気（両側の根元から） ----
