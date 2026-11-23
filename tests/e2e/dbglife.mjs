@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+import { serve } from '../serve.mjs';
+import { routeThree } from './site.mjs';
+const srv = await serve();
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: 640, height: 360 } });
+p.on('pageerror', e => console.log('ERR', e.message));
+await routeThree(p); await p.goto(srv.url + '/lab/life.html?manual');
+await p.waitForFunction(() => document.title === 'ready', null, { timeout: 300000 });
+await p.evaluate(() => window.__frame(1));
+console.log(JSON.stringify(await p.evaluate(() => window.__dbg())));
+await p.screenshot({ path: 'tests/out/main.png' });
+await b.close(); srv.close();

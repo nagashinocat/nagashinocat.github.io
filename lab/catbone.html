@@ -1,0 +1,15 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script></head><body>
+<script type="module">
+import * as THREE from 'three';
+import { addCat } from '../js/scene/creatures.js';
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(innerWidth, innerHeight); r.setScissorTest(true); document.body.append(r.domElement);
+const sc = new THREE.Scene(); sc.background = new THREE.Color('#99a'); sc.add(new THREE.HemisphereLight('#fff', '#667', 3));
+const cat = await addCat(sc, { area: { x: [0, 0], z: [0, 0] } }); cat.group.position.set(0, 0, 0);
+const sets = JSON.parse(decodeURIComponent(new URLSearchParams(location.search).get('s')));
+const n = sets.length, w = innerWidth / n;
+sets.forEach((list, i) => { cat.debugRot(list); sc.updateMatrixWorld(true);
+  const cam = new THREE.PerspectiveCamera(35, w / innerHeight, 0.001, 10); cam.position.set(0.1, 0.02, 0); cam.lookAt(0, 0.017, 0);
+  r.setViewport(i * w, 0, w, innerHeight); r.setScissor(i * w, 0, w, innerHeight); r.render(sc, cam); });
+document.title = 'ready';
+</script></body></html>

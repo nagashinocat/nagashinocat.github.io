@@ -8,7 +8,7 @@ const p = await b.newPage({ viewport: { width: w, height: h } });
 p.on('pageerror', e => console.log('ERR', e.message));
 await routeThree(p);
 await p.goto(srv.url + '/');
-await p.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 90000 });
+await p.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 240000 });
 const page = process.argv.find(a => a.startsWith('--page='))?.slice(7);
 if (page) { await p.evaluate(async k => { const b = window.__hub.book; if (k === 'wip') await b.turnTo('tools'); await b.turnTo(k); }, page); await p.waitForTimeout(400); }
 if (process.argv.includes('--nobook')) await p.evaluate(() => { const s = window.__hub.stage.scene; s.children.forEach(o => { if (o.type === 'Group' && !o.name) o.visible = false; }); });

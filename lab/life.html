@@ -1,0 +1,52 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>路地の生きもの（試作）</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Righteous&family=DotGothic16&display=swap">
+<style>html,body{margin:0;height:100%;background:#05030a;overflow:hidden}canvas{display:block;touch-action:none}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { buildAlleyPaper } from '../js/scene/alleypaper.js';
+import { addCat, addWhale } from '../js/scene/creatures.js';
+try { await Promise.all(['40px "Dela Gothic One"', '40px "Righteous"', '40px "DotGothic16"'].map(f => document.fonts.load(f))); } catch {}
+const Q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.72;
+document.body.append(renderer.domElement);
+const cam = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.005, 30);
+cam.position.set(-0.01, 0.045, 0.66); cam.lookAt(0.03, 0.3, -0.9);
+const A = await buildAlleyPaper();
+const cat = await addCat(A.scene, { height: 0.06, area: { x: [-0.06, 0.06], z: [-0.35, 0.36] }, seed: +(Q.get('seed') || 3) });
+// クジラは路地の上の細い夜空を、奥と手前を行き来して泳ぐ
+const whale = await addWhale(A.scene, { length: 0.34, center: [0.01, 0.6, -0.45], radius: [0.06, 0.55], speed: 0.07 });
+const comp = new EffectComposer(renderer); comp.addPass(new RenderPass(A.scene, cam));
+comp.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.75, 0.65, 0.88)); comp.addPass(new OutputPass());
+addEventListener('resize', () => { cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); comp.setSize(innerWidth, innerHeight); });
+// タッチ
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let now = 0;
+function tapAt(x, y) {
+  ndc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.setFromCamera(ndc, cam);
+  const hits = ray.intersectObjects([cat.hit, whale.hit], false);
+  if (!hits.length) return;
+  (hits[0].object === cat.hit ? cat : whale).tap(now);
+}
+renderer.domElement.addEventListener('pointerdown', e => tapAt(e.clientX, e.clientY));
+// 確認用：画面上の位置を返す
+const screenOf = o => { const v = o.getWorldPosition(new THREE.Vector3()).project(cam); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; };
+function frame(t) { now = t; cat.update(t); whale.update(t); for (const u of A.ups) u && u(t); comp.render(); }
+if (Q.has('manual')) {
+  // 台本：決めた時刻に猫とクジラをタッチする
+  const taps = (Q.get('taps') || '').split(',').filter(Boolean).map(s => { const [tt, who] = s.split(':'); return [+tt, who]; });
+  window.__look = (who) => { const o = who === 'cat' ? cat.group : whale.group; const p = o.getWorldPosition(new THREE.Vector3()); cam.position.copy(p).add(new THREE.Vector3(0.0, who === 'cat' ? 0.03 : 0.1, who === 'cat' ? 0.12 : 0.6)); cam.lookAt(p); };
+  window.__dbg = () => ({ cat: [cat.group.position.toArray(), screenOf(cat.hit), cat.mode], whale: [whale.group.position.toArray(), screenOf(whale.hit)] });
+  window.__frame = t => { for (const tp of taps) if (!tp.done && t >= tp[0]) { tp.done = true; const o = tp[1] === 'cat' ? cat.hit : whale.hit; tapAt(...screenOf(o)); } frame(t); };
+  document.title = 'ready';
+} else {
+  const t0 = performance.now(); const loop = () => { frame((performance.now() - t0) / 1000); requestAnimationFrame(loop); }; loop(); document.title = 'ready';
+}
+</script></body></html>
