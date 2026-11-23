@@ -306,3 +306,86 @@ export function makeSign2(kind, text, color, size, { rng = Math.random } = {}) {
   }
   return { group, hit, faceMat, update };
 }
+
+// ================= さらに増やした看板 =================
+// cloth: 吊るした布の垂れ幕 / nobori: のぼり旗 / chalk: 黒板のメニュー / enamel: 青いホーローの看板
+// letters: 一文字ずつ光る箱文字 / barber: 床屋のくるくる / led: 流れる赤いLEDの帯 / fan: 扇形の看板
+export function makeSign3(kind, text, color, size, { rng = Math.random } = {}) {
+  const [w, h] = size, group = new THREE.Group();
+  const R = 520 / Math.max(w, h), PW = Math.max(32, Math.round(w * R)), PH = Math.max(32, Math.round(h * R));
+  let hit, faceMat, update = null;
+  const vtext = (g, t, x, y, px, fill) => { g.font = `${px}px ${JP}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = fill; [...t].forEach((ch, i) => g.fillText(ch, x, y + i * px)); };
+  if (kind === 'cloth' || kind === 'nobori') {
+    const c = cv(PW, PH), g = c.getContext('2d');
+    const bg = kind === 'nobori' ? r3(rng, ['#c81e18', '#1a3a8a', '#e8c020', '#1a7a3a']) : r3(rng, ['#f0e6d0', '#2a2a2a', '#7a1a1a']);
+    g.fillStyle = bg; g.fillRect(0, 0, PW, PH);
+    if (kind === 'nobori') { g.fillStyle = '#fff'; for (let y = 0; y < PH; y += PH / 12) g.fillRect(PW * 0.86, y, PW * 0.14, PH / 24); }
+    const cs = [...text], px = Math.min(PW * 0.7, PH * 0.85 / cs.length);
+    vtext(g, text, PW * (kind === 'nobori' ? 0.43 : 0.5), PH / 2 - (cs.length - 1) * px / 2, px, bg === '#f0e6d0' || bg === '#e8c020' ? '#1a1010' : '#fff4e0');
+    weather(g, PW, PH, 80);
+    faceMat = new THREE.MeshStandardMaterial({ map: tx(c), side: THREE.DoubleSide, roughness: 1 });
+    const geo = new THREE.PlaneGeometry(w, h, 4, 8); const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setZ(i, Math.sin(p.getY(i) / h * 6 + p.getX(i) * 40) * 0.0015);
+    geo.computeVertexNormals();
+    hit = new THREE.Mesh(geo, faceMat); group.add(hit);
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.0012, 0.0012, kind === 'nobori' ? h * 1.15 : w * 1.2, 6), new THREE.MeshStandardMaterial({ color: '#3a2a20' }));
+    if (kind === 'nobori') { rod.position.set(-w / 2 - 0.0015, -h * 0.05, 0); } else { rod.rotation.z = Math.PI / 2; rod.position.y = h / 2; }
+    group.add(rod);
+    update = t => { hit.rotation.y = Math.sin(t * 1.3 + w * 100) * 0.08; };
+  } else if (kind === 'chalk') {
+    const c = cv(PW, PH), g = c.getContext('2d');
+    g.fillStyle = '#1e2a22'; g.fillRect(0, 0, PW, PH);
+    g.strokeStyle = '#8a6a40'; g.lineWidth = PW * 0.06; g.strokeRect(0, 0, PW, PH);
+    g.fillStyle = '#f0ece0'; g.font = `${PW * 0.16}px ${JP}`; g.textAlign = 'center'; g.fillText(text, PW / 2, PH * 0.2);
+    g.font = `${PW * 0.09}px ${JP}`; g.textAlign = 'left';
+    ['ラーメン 680', '餃子 350', 'ビール 500', 'チャーハン 700'].forEach((t, i) => { g.fillStyle = ['#f0ece0', '#ffd86a', '#ff9ab8', '#9fe2ff'][i]; g.fillText(t, PW * 0.12, PH * (0.38 + i * 0.15)); });
+    faceMat = new THREE.MeshStandardMaterial({ map: tx(c), roughness: 1 });
+    hit = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.003), [0, 0, 0, 0, 0, 0].map((_, i) => i === 4 ? faceMat : new THREE.MeshStandardMaterial({ color: '#6a4a2a' }))); hit.rotation.x = -0.18; group.add(hit);
+    for (const sx of [-1, 1]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.002, h * 1.1, 0.002), new THREE.MeshStandardMaterial({ color: '#6a4a2a' })); leg.position.set(sx * w * 0.45, -0.005, -0.008); leg.rotation.x = 0.25; group.add(leg); }
+  } else if (kind === 'enamel') {
+    const c = cv(PW, PH), g = c.getContext('2d');
+    g.fillStyle = '#1a3a8a'; g.beginPath(); g.roundRect(0, 0, PW, PH, PH * 0.18); g.fill();
+    g.strokeStyle = '#f4f0e6'; g.lineWidth = PH * 0.06; g.beginPath(); g.roundRect(PH * 0.08, PH * 0.08, PW - PH * 0.16, PH - PH * 0.16, PH * 0.12); g.stroke();
+    g.fillStyle = '#f4f0e6'; g.textAlign = 'center'; g.textBaseline = 'middle'; fit(g, text, PW * 0.8, PH * 0.5, JP); g.fillText(text, PW / 2, PH / 2);
+    for (let i = 0; i < 30; i++) { g.fillStyle = `rgba(40,20,10,${Math.random() * 0.8})`; g.beginPath(); g.arc(Math.random() * PW, Math.random() * PH, Math.random() * 4 + 1, 0, 7); g.fill(); }
+    faceMat = new THREE.MeshStandardMaterial({ map: tx(c), transparent: true, roughness: 0.35, metalness: 0.1 });
+    hit = new THREE.Mesh(new THREE.PlaneGeometry(w, h), faceMat); group.add(hit);
+  } else if (kind === 'letters') { // 一文字ずつ光る箱文字（横に並べて桟に載せる）
+    const cs = [...text], cw = w / cs.length;
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(w * 1.05, 0.002, 0.004), new THREE.MeshStandardMaterial({ color: '#2a2224' })); rail.position.y = -h / 2 - 0.001; group.add(rail);
+    cs.forEach((ch, i) => {
+      const c = cv(128, 128), g = c.getContext('2d'); g.font = `110px ${JP}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = color; g.shadowColor = color; g.shadowBlur = 12; g.fillText(ch, 64, 70); g.shadowBlur = 0; g.fillStyle = 'rgba(255,255,255,0.55)'; g.fillText(ch, 64, 70);
+      const m = new THREE.MeshBasicMaterial({ map: tx(c), transparent: true, toneMapped: false });
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(cw * 0.95, h), m); p.position.x = -w / 2 + cw * (i + 0.5); group.add(p);
+      const bk = new THREE.Mesh(new THREE.PlaneGeometry(cw * 0.95, h), new THREE.MeshBasicMaterial({ map: m.map, transparent: true, color: '#3a2a2a' })); bk.position.set(p.position.x, 0, -0.003); group.add(bk);
+      if (!hit) { hit = p; faceMat = m; }
+    });
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })); group.add(back); hit = back;
+  } else if (kind === 'barber') {
+    const c = cv(64, 256), g = c.getContext('2d');
+    for (let y = -64; y < 256 + 64; y += 32) { g.fillStyle = '#d81e1e'; g.beginPath(); g.moveTo(0, y); g.lineTo(64, y + 32); g.lineTo(64, y + 42); g.lineTo(0, y + 10); g.fill(); g.fillStyle = '#1e4ad8'; g.beginPath(); g.moveTo(0, y + 16); g.lineTo(64, y + 48); g.lineTo(64, y + 56); g.lineTo(0, y + 24); g.fill(); }
+    const t = tx(c); t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    faceMat = new THREE.MeshBasicMaterial({ map: t, color: '#ffffff', toneMapped: false });
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, h, 16), faceMat); group.add(pole); hit = pole;
+    for (const sy of [-1, 1]) { const cap = new THREE.Mesh(new THREE.SphereGeometry(w * 0.6, 12, 8), new THREE.MeshStandardMaterial({ color: '#c0c0c0', metalness: 0.6, roughness: 0.3 })); cap.position.y = sy * h / 2; group.add(cap); }
+    update = tt => { t.offset.y = (tt * 0.6) % 1; };
+  } else if (kind === 'led') {
+    const c = cv(512, 48), g = c.getContext('2d');
+    const draw = off => { g.fillStyle = '#100404'; g.fillRect(0, 0, 512, 48); g.font = 'bold 36px "DotGothic16",monospace'; g.fillStyle = color; g.textBaseline = 'middle'; const msg = `${text}　＊　${text}　＊　`; g.fillText(msg, -off, 26); g.fillText(msg, -off + g.measureText(msg).width, 26); for (let x = 0; x < 512; x += 4) { g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(x, 0, 1, 48); } for (let y = 0; y < 48; y += 4) { g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(0, y, 512, 1); } };
+    draw(0);
+    const t = tx(c); faceMat = new THREE.MeshBasicMaterial({ map: t, toneMapped: false });
+    hit = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.004), [0, 0, 0, 0, 0, 0].map((_, i) => i === 4 ? faceMat : new THREE.MeshStandardMaterial({ color: '#2a2a2a' }))); group.add(hit);
+    let last = -1; update = tt => { const o = Math.floor(tt * 60) % 400; if (o !== last) { last = o; draw(o); t.needsUpdate = true; } };
+  } else if (kind === 'fan') {
+    const s = new THREE.Shape(); s.moveTo(0, -h / 2); s.absarc(0, -h / 2, h, Math.PI * 0.25, Math.PI * 0.75, false); s.lineTo(0, -h / 2);
+    const c = cv(PW, PH), g = c.getContext('2d');
+    g.fillStyle = '#e8c020'; g.fillRect(0, 0, PW, PH);
+    for (let k = 0; k < 8; k++) { g.fillStyle = k % 2 ? '#d81e1e' : '#e8c020'; g.beginPath(); g.moveTo(PW / 2, PH); g.arc(PW / 2, PH, PH, Math.PI * (1.25 + k * 0.0625), Math.PI * (1.25 + (k + 1) * 0.0625)); g.fill(); }
+    g.fillStyle = '#1a1010'; g.textAlign = 'center'; fit(g, text, PW * 0.5, PH * 0.25, JP); g.fillText(text, PW / 2, PH * 0.42);
+    faceMat = new THREE.MeshStandardMaterial({ map: tx(c), roughness: 0.8, emissive: 0xffffff, emissiveMap: tx(c), emissiveIntensity: 0.2 });
+    hit = shapeMesh(s, 0.003, faceMat, new THREE.MeshStandardMaterial({ color: '#4a3020' })); group.add(hit);
+  }
+  return { group, hit, faceMat, update };
+}
+const r3 = (rng, arr) => arr[Math.floor(rng() * arr.length)];

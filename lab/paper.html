@@ -11,7 +11,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { paperBuilding, paperBuildingDetailed } from '../js/scene/paper.js';
-import { makeSign, makeSign2, bracket } from '../js/scene/signs.js';
+import { makeSign, makeSign2, makeSign3, bracket } from '../js/scene/signs.js';
 import { groundTextures, chochin } from '../js/scene/alley.js';
 import { glowTex } from '../js/scene/parts.js';
 import { rng } from '../js/rng.js';
@@ -38,6 +38,21 @@ scene.add(new THREE.HemisphereLight('#3a2e6a', '#0a0610', 0.22));
 const moon = new THREE.DirectionalLight('#7a88ff', 0.18); moon.position.set(-1, 2, 1); scene.add(moon);
 const ALLEY = 0.26;
 const tops = [];
+// 看板の山札：同じ種類×同じ字は二度出さない
+const DECK = (() => {
+  const T = {
+    neon: ['酒', '麺', '大東電器', '按摩', '雀荘', '龍華', '夜來香', '金魚'], lightbox: ['飯店', '薬', '理髪', '歯科', '旅館', '珈琲', '両替', '電器行'],
+    marquee: ['BAR', 'OPEN', 'HOT DOG', 'MOTEL', 'CASINO', 'DINER'], round: ['質', '當', '茶', '湯', '福'], shield: ['ROUTE 66', 'ROUTE 9', 'DINER 24', 'BAR 66'],
+    arrow: ['CAFE', 'EXIT', 'GAS', 'MOTEL'], plank: ['SALOON', 'TRADING', 'GARAGE', 'APACHE'], tin: ['NO PARKING', 'KEEP OUT', 'DANGER HIGH VOLT', 'SMILE ON CAMERA'],
+    pawn: ['押當', '大押'], bulbvert: ['富記', '寶館', '金龍', '萬興'], neonicon: ['cocktail', 'star', 'cat', 'arrow'],
+    cloth: ['大売出', '御休処', '拉麺'], nobori: ['焼鳥', '餃子', '営業中', '甘味'], chalk: ['本日', 'MENU'], enamel: ['仁丹', '金鳥', '大學目薬', '牛乳'],
+    letters: ['HOTEL', '大酒店', 'KARAOKE'], barber: ['理'], led: ['大特価セール', '24時間営業', 'WELCOME'], fan: ['扇屋', '團扇'],
+  };
+  const d = []; for (const [k, list] of Object.entries(T)) for (const t of list) d.push([k, t]);
+  for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(r.next() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
+  return d;
+})();
+const dim = (grp, k) => grp.traverse(o => { const m = o.material; if (!m) return; for (const mm of [].concat(m)) { if (!mm) continue; if (mm.isSpriteMaterial) mm.opacity *= k; else if (mm.toneMapped === false && mm.color) mm.color.multiplyScalar(k); else if (mm.emissiveIntensity !== undefined) mm.emissiveIntensity *= k; } });
 // 路地の両側の紙の建物
 for (const side of [-1, 1]) {
   let z = 0.62;
@@ -52,22 +67,23 @@ for (const side of [-1, 1]) {
     const nSigns = side < 0 ? r.int(6, 10) : r.int(4, 7);
     const occ = [];
     for (let k = 0, tries = 0; k < nSigns && tries < 40; tries++) {
-      const ALL = ['neon', 'lightbox', 'marquee', 'round', 'shield', 'arrow', 'plank', 'tin', 'pawn', 'bulbvert', 'neonicon', 'lightbox', 'neon'];
-      const kind = r.pick(ALL), color = r.pick(['#ff4fa3', '#4fd8ff', '#ffb21f', '#b46bff', '#ff3b3b', '#7cff6b']);
-      const TXT = { marquee: ['BAR', 'OPEN', 'HOT DOG', 'MOTEL', 'CASINO'], shield: ['ROUTE 66', 'ROUTE 9', 'DINER 24', 'BAR 66'], arrow: ['CAFE', 'DINER', 'EXIT', 'GAS'], plank: ['SALOON', 'TRADING', 'GARAGE', 'APACHE'], tin: ['NO PARKING', 'KEEP OUT', 'DANGER HIGH VOLT', 'SMILE ON CAMERA'], pawn: ['押當', '押押', '大押'], bulbvert: ['富記', '寶館', '金龍', '萬興'], neonicon: ['cocktail', 'star', 'cat', 'arrow'] };
-      const text = (TXT[kind] && r.pick(TXT[kind])) || r.pick(['酒', '麺', '薬', '飯店', '大東電器', '按摩', '雀荘', '龍華', '茶', '理髪']);
-      const SIZE = { marquee: [0.012 + text.length * 0.007, 0.02], round: [0.04, 0.04], shield: [0.04, 0.045], arrow: [0.07, 0.022], plank: [0.07, 0.025], tin: [0.03, 0.04], pawn: [0.05, 0.05], bulbvert: [0.03, 0.03 + [...text].length * 0.025], neonicon: [0.045, 0.045] };
-      // 大・中・小（大でもいままでより少し小さく）
+      if (!DECK.length) break;
+      const [kind, text] = DECK.pop(); const color = r.pick(['#ff4fa3', '#4fd8ff', '#ffb21f', '#b46bff', '#ff3b3b', '#7cff6b']);
+      const SIZE = { marquee: [0.012 + text.length * 0.007, 0.02], round: [0.04, 0.04], shield: [0.04, 0.045], arrow: [0.07, 0.022], plank: [0.07, 0.025], tin: [0.03, 0.04], pawn: [0.05, 0.05], bulbvert: [0.03, 0.03 + [...text].length * 0.025], neonicon: [0.045, 0.045],
+        cloth: [0.03, 0.03 + [...text].length * 0.025], nobori: [0.022, 0.1], chalk: [0.05, 0.065], enamel: [0.06, 0.024], letters: [0.018 * [...text].length, 0.022], barber: [0.012, 0.05], led: [0.1, 0.014], fan: [0.07, 0.04] };
       const cls = r.next(), k2 = cls < 0.3 ? 0.85 : cls < 0.7 ? 0.62 : 0.42;
       const size = (SIZE[kind] || [0.026, 0.03 + [...text].length * 0.02]).map(v => v * k2);
+      const S3 = ['cloth', 'nobori', 'chalk', 'enamel', 'letters', 'barber', 'led', 'fan'], S2 = ['shield', 'arrow', 'plank', 'tin', 'pawn', 'bulbvert', 'neonicon'];
+      const make = () => S3.includes(kind) ? makeSign3(kind, text, color, size, { rng: () => r.next() }) : S2.includes(kind) ? makeSign2(kind, text, color, size, { rng: () => r.next() }) : makeSign(kind, text, color, size, { vertical: size[1] > size[0], rng: () => r.next() });
       const y = r.range(0.085, Math.max(0.09, h * 0.85 - size[1])), zz = z - d * r.range(0.1, 0.9);
-      const flat = ['plank', 'tin', 'arrow'].includes(kind) ? r.next() < 0.7 : r.next() < 0.2;
+      const flat = ['plank', 'tin', 'arrow', 'enamel', 'letters', 'fan', 'led'].includes(kind) ? r.next() < 0.75 : ['barber', 'chalk'].includes(kind) ? true : r.next() < 0.2;
       const half = flat ? Math.max(size[0], 0.01) / 2 : 0.008;
-      if (occ.some(o => Math.abs(o.z - zz) < o.hz + half + 0.004 && Math.abs(o.y - y) < o.hy + size[1] / 2 + 0.004)) continue;
+      if (occ.some(o => Math.abs(o.z - zz) < o.hz + half + 0.004 && Math.abs(o.y - y) < o.hy + size[1] / 2 + 0.004)) { DECK.unshift([kind, text]); continue; }
       occ.push({ z: zz, y, hz: half, hy: size[1] / 2 });
       k++;
-      const sg = ['shield', 'arrow', 'plank', 'tin', 'pawn', 'bulbvert', 'neonicon'].includes(kind) ? makeSign2(kind, text, color, size, { rng: () => r.next() }) : makeSign(kind, text, color, size, { vertical: size[1] > size[0], rng: () => r.next() });
+      const sg = make(); dim(sg.group, 0.32);
       if (sg.update) ups.push(sg.update);
+      if (kind === 'chalk') { sg.group.position.set(side * (ALLEY / 2 - 0.03), size[1] / 2 + 0.004, zz); sg.group.rotation.y = side < 0 ? 0.5 : -0.5; scene.add(sg.group); continue; }
       if (flat) {
         sg.group.position.set(side * (ALLEY / 2 - 0.003), y, zz);
         sg.group.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2;
@@ -81,7 +97,7 @@ for (const side of [-1, 1]) {
         scene.add(sg.group);
         const arm = bracket(out + (kind === 'marquee' ? size[0] / 2 : 0) + 0.004); arm.position.set(side * ALLEY / 2, y + size[1] / 2 - 0.003, zz); arm.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2; scene.add(arm);
       }
-      if (k2 > 0.7) { const L = new THREE.PointLight(color, 0.025, 0.22, 2); L.position.copy(sg.group.position); scene.add(L); }
+      if (k2 > 0.8 && r.next() < 0.5) { const L = new THREE.PointLight(color, 0.015, 0.18, 2); L.position.copy(sg.group.position); scene.add(L); }
     }
     // 低い建物の屋上に大きな看板
     if (side > 0 && h < 0.35 && r.next() < 0.6) {
@@ -89,7 +105,7 @@ for (const side of [-1, 1]) {
       const text = kind === 'marquee' ? r.pick(['CASINO', 'HOTEL', 'DINER']) : r.pick(['金龍大酒樓', '大東電器', '富記', '萬興樓']);
       const size = kind === 'marquee' ? [0.14, 0.05] : kind === 'bulbvert' ? [0.04, 0.03 + [...text].length * 0.03] : [0.16, 0.05];
       const sg = kind === 'bulbvert' ? makeSign2(kind, text, r.pick(['#ffb21f', '#ff4fa3']), size, { rng: () => r.next() }) : makeSign(kind, text, r.pick(['#ff4fa3', '#4fd8ff', '#ffb21f']), size, { vertical: size[1] > size[0], rng: () => r.next() });
-      if (sg.update) ups.push(sg.update);
+      dim(sg.group, 0.6); if (sg.update) ups.push(sg.update);
       const zc = z - d / 2, x = ALLEY / 2 + 0.06, top = h + 0.02 + size[1] / 2;
       sg.group.position.set(x, top, zc); sg.group.rotation.y = -0.55; scene.add(sg.group);
       const pm = new THREE.MeshStandardMaterial({ color: '#2a2224', roughness: 0.9 });
@@ -127,21 +143,35 @@ for (const side of [-1, 1]) {
 // ゲームの看板：大きく、明るく、照らされて目立つ
 {
   const works = (await (await fetch('../data/works.json')).json()).filter(w => w.district === 'games');
-  const KINDS = ['neon', 'bulbvert', 'neon', 'lightbox', 'bulbvert', 'neon'];
+  const PLAN = [
+    { kind: 'neon', side: -1, z: 0.5, y: 0.075, v: true }, { kind: 'marquee', side: 1, z: 0.46, y: 0.085 },
+    { kind: 'bulbvert', side: -1, z: 0.34, y: 0.08, v: true }, { kind: 'neon', side: 1, z: 0.3, y: 0.075, v: true },
+    { kind: 'letters', side: -1, z: 0.2, y: 0.1 }, { kind: 'lightbox', side: 1, z: 0.14, y: 0.08, v: true },
+  ];
   works.forEach((w, i) => {
-    const side = i % 2 ? 1 : -1, z = 0.3 - Math.floor(i / 2) * 0.22 - (side > 0 ? 0.08 : 0);
-    let kind = KINDS[i % KINDS.length]; const latin = !/[\u3000-\u9fff\uff00-\uffef]/.test(w.title);
-    if (latin && kind !== 'neon') kind = 'neon';
-    const len = [...w.title].length, sh = Math.min(0.2, 0.05 + len * 0.012), sw = len > 12 ? 0.04 : 0.03;
-    const sg = kind === 'bulbvert' ? makeSign2('bulbvert', w.title.replace(/[、。]/g, ''), w.color, [sw, sh], { rng: () => r.next() }) : makeSign(kind, w.title, w.color || '#ff4fa3', [sw, sh], { vertical: true, rng: () => r.next() });
+    const P = PLAN[i % PLAN.length], side = P.side, z = P.z - Math.floor(i / PLAN.length) * 0.4;
+    const len = [...w.title].length; let kind = P.kind;
+    const latin = !/[\u3000-\u9fff\uff00-\uffef]/.test(w.title);
+    if (kind === 'bulbvert' && (latin || len > 8)) kind = 'neon';
+    if (kind === 'letters' && len > 8) kind = 'marquee';
+    if (kind === 'marquee' && len > 10) kind = 'neon';
+    const vert = P.v && !latin;
+    let sw, sh;
+    if (vert) { sh = Math.min(0.18, 0.04 + len * 0.012); sw = len > 12 ? 0.04 : 0.03; } else { sw = Math.min(0.1, 0.02 + len * (latin ? 0.0045 : 0.008)); sh = len > 12 ? 0.03 : 0.022; }
+    if (kind === 'letters') { sw = len * 0.022; sh = 0.026; }
+    const col = w.color || '#ff4fa3';
+    const sg = kind === 'bulbvert' ? makeSign2('bulbvert', w.title, col, [sw, sh], { rng: () => r.next() })
+      : kind === 'letters' ? makeSign3('letters', w.title, col, [sw, sh], { rng: () => r.next() })
+      : makeSign(kind, w.title, col, [sw, sh], { vertical: vert, rng: () => r.next() });
     if (sg.update) ups.push(sg.update);
-    const out = sw / 2 + 0.016, y = 0.13 + sh / 2;
+    sg.group.traverse(o => { for (const m of [].concat(o.material || [])) { if (m && m.color && m.toneMapped === false) m.color.multiplyScalar(kind === 'lightbox' ? 1.15 : 2.0); if (m && m.isSpriteMaterial) m.opacity = Math.min(1, m.opacity * 1.6); } });
+    const out = (vert ? sw : 0.004) / 2 + 0.014 + (vert ? 0 : sw / 2), y = P.y + sh / 2;
     sg.group.position.set(side * (ALLEY / 2 - out), y, z);
-    sg.group.traverse(o => { if (o.material && o.material.color && o.material.toneMapped === false) o.material.color.multiplyScalar(1.8); });
+    if (!vert) sg.group.rotation.y = side * -0.35;
     scene.add(sg.group);
-    const arm = bracket(out + 0.004); arm.position.set(side * ALLEY / 2, y + sh / 2 - 0.004, z); arm.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2; scene.add(arm);
-    const L = new THREE.PointLight(w.color || '#ff4fa3', 0.12, 0.35, 2); L.position.set(side * (ALLEY / 2 - out), y, z + 0.03); scene.add(L);
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: w.color || '#ff4fa3', transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.set(sw * 4, sh * 1.8, 1); halo.position.copy(sg.group.position); scene.add(halo);
+    const arm = bracket(out + 0.004); arm.position.set(side * ALLEY / 2, y + sh / 2 - 0.003, z); arm.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2; scene.add(arm);
+    const L = new THREE.PointLight(col, 0.05, 0.22, 2); L.position.set(side * (ALLEY / 2 - out), y, z + 0.03); scene.add(L);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: col, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.set(Math.max(sw, 0.04) * 2.2, Math.max(sh, 0.04) * 2.2, 1); halo.position.copy(sg.group.position); scene.add(halo);
   });
 }
 // 奥のタワー（大画面）
@@ -153,10 +183,10 @@ for (const side of [-1, 1]) {
   g.fillStyle = '#000'; g.fillRect(0, 0, 400, 440); if (im.naturalWidth) { const k = 440 / im.naturalHeight; g.drawImage(im, (400 - im.naturalWidth * k) / 2, 0, im.naturalWidth * k, 440 - 80); }
   g.fillStyle = '#120808'; g.fillRect(0, 360, 400, 80); g.fillStyle = '#ffb030'; g.font = 'bold 44px "DotGothic16",sans-serif'; g.fillText('NEW ＊ 超能力者の証明', 10, 415);
   const st = new THREE.CanvasTexture(c); st.colorSpace = THREE.SRGBColorSpace;
-  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.264), new THREE.MeshBasicMaterial({ map: st, toneMapped: false, color: new THREE.Color(1.5, 1.5, 1.5) }));
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.264), new THREE.MeshBasicMaterial({ map: st, toneMapped: false, color: new THREE.Color(2.2, 2.2, 2.2) }));
   scr.position.set(0, 0.95, -0.894); scene.add(scr);
   const fr = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.284), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.6, 1.5), toneMapped: false })); fr.position.set(0, 0.95, -0.8945); scene.add(fr);
-  const sl = new THREE.PointLight('#ff6ab8', 0.2, 0.9, 2); sl.position.set(0, 0.95, -0.8); scene.add(sl);
+  const sl = new THREE.PointLight('#ff6ab8', 0.25, 0.9, 2); sl.position.set(0, 0.95, -0.8); scene.add(sl);
   const s = makeSign('neon', '開発街', '#ff3b6a', [0.24, 0.08], { rng: () => r.next() }); s.group.position.set(0, 1.2, -0.893); scene.add(s.group);
   const beam = new THREE.MeshBasicMaterial({ color: '#9fd8ff', transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
   for (const sx of [-1, 1]) { const p = new THREE.Group(); p.position.set(sx * 0.08, 1.5, -1.0); const c = new THREE.Mesh(new THREE.ConeGeometry(0.25, 3, 16, 1, true), beam); c.position.y = 1.5; c.rotation.z = Math.PI; p.add(c); p.rotation.z = -sx * 0.35; scene.add(p); }
