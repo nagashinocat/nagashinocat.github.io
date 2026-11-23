@@ -107,16 +107,34 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   const backOut = x => { const c1 = 1.3, c3 = c1 + 1; return 1 + c3 * (x - 1) ** 3 + c1 * (x - 1) ** 2; };
   const grow = x => x < 0.5 ? 0.3 * (x / 0.5) ** 2 : 0.3 + 0.7 * backOut((x - 0.5) / 0.5);
   const setPop = t => { for (const o of pops) { const d = delays.get(o); const x = clamp01((t - d) / durOf(d)); const k = x <= 0 ? 0.0001 : grow(x); const s0 = base.get(o); o.scale.set(s0.x, s0.y * k, s0.z); o.visible = x > 0; } };
-  // 地面：奥からカーペットを転がして敷くように手前へ
+  // 地面：分厚いカーペットを奥から転がして敷くように手前へ。巻きは残りの長さに合わせて太い
+  const G_LEN = 1.6, G_BACK = -0.8, G_W = 2.2, TH = 0.012, PAGE_TOP = 0.0045, CORE = 0.022, R_MAX = 0.13;
   const gBase = new Map(D.ground.map(o => [o, { s: o.scale.clone(), z: o.position.z }]));
-  const G_LEN = 1.6, G_BACK = -0.8;
-  const rollTex = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 256; const g = c.getContext('2d'); g.fillStyle = '#241a2c'; g.fillRect(0, 0, 64, 256); for (let y = 0; y < 256; y += 32) { g.fillStyle = '#3a2c48'; g.fillRect(0, y, 64, 10); g.fillStyle = 'rgba(255,140,200,0.35)'; g.fillRect(0, y + 12, 64, 2); } const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; })();
-  const roll = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 2.2, 32), [new THREE.MeshStandardMaterial({ map: rollTex, roughness: 0.5, emissive: '#3a2850', emissiveMap: rollTex, emissiveIntensity: 1.2 }), new THREE.MeshStandardMaterial({ color: '#4a3a56', roughness: 1 }), new THREE.MeshStandardMaterial({ color: '#4a3a56', roughness: 1 })]);
-  roll.rotation.z = Math.PI / 2; D.scene.add(roll);
+  for (const o of D.ground) o.position.y += TH; // 地面の絵はカーペットの上に
+  const carpetTex = (() => { const c = document.createElement('canvas'); c.width = 16; c.height = 16; const g = c.getContext('2d'); g.fillStyle = '#2a1e34'; g.fillRect(0, 0, 16, 16); g.fillStyle = '#ff7ad0'; g.fillRect(0, 0, 16, 2); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const sideM = new THREE.MeshStandardMaterial({ color: '#2a1e34', roughness: 0.9, emissive: '#2a1440', emissiveIntensity: 0.8 });
+  const edgeM = new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.9, emissive: '#3a1a50', emissiveMap: carpetTex, emissiveIntensity: 1 });
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(G_W, TH, 1), [sideM, sideM, sideM, sideM, edgeM, sideM]); D.scene.add(slab);
+  // 巻きの断面：うずまき
+  const spiralTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); g.fillStyle = '#1c1426'; g.beginPath(); g.arc(128, 128, 128, 0, 7); g.fill();
+    g.strokeStyle = '#ff8ad8'; g.lineWidth = 3; g.beginPath(); for (let a = 0; a < Math.PI * 2 * 7; a += 0.05) { const r = 14 + a / (Math.PI * 2) * 16; g.lineTo(128 + Math.cos(a) * r, 128 + Math.sin(a) * r); } g.stroke();
+    g.strokeStyle = '#4a3a5a'; g.lineWidth = 6; g.beginPath(); g.arc(128, 128, 124, 0, 7); g.stroke(); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const rollTex = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 512; const g = c.getContext('2d'); g.fillStyle = '#241a2c'; g.fillRect(0, 0, 64, 512); for (let y = 0; y < 512; y += 40) { g.fillStyle = '#3a2c48'; g.fillRect(0, y, 64, 14); g.fillStyle = 'rgba(255,140,210,0.5)'; g.fillRect(0, y + 16, 64, 3); } for (let i = 0; i < 60; i++) { g.fillStyle = 'rgba(160,220,255,0.35)'; g.fillRect(Math.random() * 64, Math.random() * 512, 2, 2); } const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; })();
+  const capM = new THREE.MeshStandardMaterial({ map: spiralTex, roughness: 0.9, emissive: '#ffffff', emissiveMap: spiralTex, emissiveIntensity: 0.35 });
+  const roll = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, G_W, 48), [new THREE.MeshStandardMaterial({ map: rollTex, roughness: 0.5, emissive: '#3a2850', emissiveMap: rollTex, emissiveIntensity: 1.3 }), capM, capM]);
+  const rollG = new THREE.Group(); roll.rotation.z = Math.PI / 2; rollG.add(roll); D.scene.add(rollG);
+  // 残りの長さ L のとき、巻きの半径（紙の厚み TH を重ねたうずまき）
+  const B = (R_MAX * R_MAX - CORE * CORE) / G_LEN, radOf = L => Math.sqrt(CORE * CORE + B * L); // 見栄え優先で太めに
   const setGround = u => {
+    const laid = G_LEN * u, rest = G_LEN - laid, r = radOf(rest);
     for (const o of D.ground) { const g = gBase.get(o); o.scale.set(g.s.x, Math.max(1e-4, g.s.y * u), g.s.z); o.position.z = G_BACK + (g.z - G_BACK) * u; o.visible = u > 0; }
-    const rad = 0.01 + 0.04 * (1 - u);
-    roll.visible = u > 0 && u < 1; roll.scale.set(rad, 1, rad); roll.position.set(0, 0.012 + rad, G_BACK + G_LEN * u); roll.rotation.x = -(G_LEN * u) / rad * 0.5;
+    slab.visible = u > 0; slab.scale.z = Math.max(1e-4, laid); slab.position.set(0, PAGE_TOP + TH / 2, G_BACK + laid / 2);
+    rollG.visible = u < 1;
+    // 転がった角度：ds/r を積分した形（巻きがほどけるほど速く回る）
+    const ang = (2 / B) * (radOf(G_LEN) - r);
+    const bump = Math.abs(Math.sin(ang * 0.5)) * 0.004 * (1 - u); // ごとごと
+    rollG.position.set(0, PAGE_TOP + r + Math.max(0, bump), G_BACK + laid + r * 0.15);
+    roll.scale.set(r, 1, r); rollG.rotation.x = ang;
   };
   setPop(-1); setGround(0); setBook(0);
   const lamp = new THREE.SpotLight('#ffd8a0', 9, 7, 0.7, 0.6, 1.0); lamp.position.set(-0.8, 2.2, 1.4); lamp.target.position.set(0, 0, 0); D.scene.add(lamp, lamp.target);
@@ -146,7 +164,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     time = t;
     const oc = clamp01((t - 0.8) / 3.2);
     setBook(oc < 0.5 ? 4 * oc ** 3 : 1 - (-2 * oc + 2) ** 3 / 2);
-    setGround(1 - (1 - clamp01((t - 3.6) / 2.2)) ** 2);
+    setGround(smooth01((t - 3.4) / 2.8)); // ゆっくり押し出して、ころころ転がり、最後はそっと止まる
     setPop(t - 4.2);
     lamp.intensity = 9 * (1 - ease(clamp01((t - 4.8) / 3.2)));
     if (D.scene.fog) D.scene.fog.density = fog0 * (0.25 + 0.75 * ease(clamp01((t - 3.0) / 4.0)));
