@@ -61,14 +61,14 @@ function chochinTexture(ch, color) {
 export function chochin(r) {
   const g = new THREE.Group();
   const pts = []; for (let i = 0; i <= 12; i++) { const t = i / 12; pts.push(new THREE.Vector2(0.006 + 0.0065 * Math.sin(t * Math.PI), (t - 0.5) * 0.022)); }
-  const mat = new THREE.MeshBasicMaterial({ map: chochinTexture(r.pick(['祭', '酒', '麺', '福', '亭', '寿']), r.pick(['#e8341f', '#e8341f', '#f2e6c8', '#ff7a1a'])), toneMapped: false });
+  const mat = new THREE.MeshBasicMaterial({ map: chochinTexture(r.pick(['祭', '酒', '麺', '福', '亭', '寿']), r.pick(['#ff3a1f', '#ff3a1f', '#fff0c8', '#ff8a1a'])), toneMapped: false, color: new THREE.Color(1.6, 1.4, 1.3) });
   const body = new THREE.Mesh(new THREE.LatheGeometry(pts, 16), mat);
   body.add(new THREE.Mesh(new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p.x + 0.0008, p.y)), 16), hull));
   g.add(body);
   for (const y of [-0.0115, 0.0115]) { const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.0055, 0.0055, 0.002, 12), ink); cap.position.y = y; g.add(cap); }
   const tassel = new THREE.Mesh(new THREE.BoxGeometry(0.0012, 0.006, 0.0012), ink); tassel.position.y = -0.016; g.add(tassel);
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: '#ff6a40', transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false }));
-  halo.scale.setScalar(0.07); g.add(halo);
+  halo.scale.setScalar(0.09); halo.material.opacity = 0.7; g.add(halo);
   return g;
 }
 function andon(r) {
