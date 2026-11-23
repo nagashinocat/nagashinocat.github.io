@@ -71,7 +71,7 @@ async function runSite(ctx) {
       await page.click('#next');
       await page.waitForFunction(() => window.__hub.book.current === 'tools' && !window.__hub.book.busy, null, { timeout: 240000 });
       const label = await page.textContent('#district-name');
-      assert(label.includes('工場街'), label);
+      assert(label.includes('工場'), label);
     });
     await page.screenshot({ path: `${OUT}site-${name}-tools.png` });
     await check(`site ${name}: 一覧が開いてリンクが正しい`, async () => {

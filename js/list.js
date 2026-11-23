@@ -2,8 +2,8 @@
 import { worksByDistrict, isPlayable } from './works.js';
 
 export const DISTRICT_LABEL = {
-  games: ['繁華街', 'ゲーム'],
-  tools: ['工場街', '道具'],
+  games: ['路地', 'ゲーム'],
+  tools: ['第3工場', '道具'],
   wip: ['空き地', '工事中の作品'],
 };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

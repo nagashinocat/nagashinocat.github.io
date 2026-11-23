@@ -150,7 +150,13 @@ export function createBook(stage, { works, plans, screens, parts = null, reduced
     if (v) return v;
     return { position: new THREE.Vector3(0, 0.045, 0.92), target: new THREE.Vector3(0, 0.42, -0.7), fov: 58 };
   };
-  async function dive(d) { stage.setPickables([...d.userData.workSigns, ...d.userData.screenParts]); stage.setStreetView(streetOf(d)); await stage.flyTo('street', 1.8 / speed); }
+  async function dive(d) {
+    stage.setPickables([...d.userData.workSigns, ...d.userData.screenParts]);
+    const v = streetOf(d);
+    // 本の手前の路地の入口まで降りて、そこから路地の中へ入っていく
+    if (d.userData.gate) await stage.flyTo(d.userData.gate, 1.4 / speed);
+    await stage.flyTo(v, (d.userData.gate ? 1.6 : 1.8) / speed);
+  }
   async function popUp(d) {
     d.visible = true;
     const piv = d.userData.pivots;

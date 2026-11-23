@@ -7,6 +7,7 @@ import { INK, screentone, crosshatch, inkLine } from '../draw/manga.js';
 import { rng } from '../rng.js';
 import { addKowloon } from './kowloon.js';
 import { toonMaterial, outlineMaterial } from './toon.js';
+import { addAlley } from './alley.js';
 
 const H = Math.PI / 2;
 const inkMat = new THREE.LineBasicMaterial({ color: INK });
@@ -123,8 +124,10 @@ export function buildDistrict(plan, works, textures, opts = {}) {
       model.add(new THREE.Mesh(pick.geometry, outlineMaterial(0.0022)));
       model.scale.set(...sc);
       model.position.set(0, -b.h / 2, 0);
-      if (r.next() < 0.5 && b.style !== 'billboard') model.rotation.y = Math.PI;
+      const flip = r.next() < 0.5 && b.style !== 'billboard';
+      if (flip) model.rotation.y = Math.PI;
       mesh.add(model);
+      mesh.userData.info = { pick, sc, flip };
     } else {
       const { w, h } = facadeSize({ w: b.fw, h: b.h }, plan.kind === 'games' && b.strip === 'inner' ? 1.8 : 1);
       const c = canvas(w, h);
@@ -144,9 +147,19 @@ export function buildDistrict(plan, works, textures, opts = {}) {
     pivot.userData = { delay: (rows - 1 - b.row) * 0.13 + (b.strip === 'outer' ? 0.18 : 0) + r.range(0, 0.1), bldg: b, yaw };
     root.add(pivot);
     pivots.push(pivot);
-    bmap.set(b.id, { b, mesh, yaw });
+    bmap.set(b.id, { b, mesh, yaw, pivot, info: mesh.userData.info });
   }
 
+  // Meshy の部品の路地は、別の作り込み（alley.js）で仕上げる
+  if (opts.parts && plan.kind === 'games') {
+    const decor = new THREE.Group(); decor.scale.y = 0.001; root.add(decor);
+    const tw = bmap.get(plan.billboard.bldgId);
+    const extra = addAlley(root, plan, bmap, decor, r, { works: works.filter(w => w.district === 'games'), reflect: opts.reflect, tower: { ...tw, screenTex: textures.billboard } });
+    root.userData = { kind: plan.kind, pivots, decor, workSigns: extra.workSigns, signs: extra.workSigns, screenParts: extra.screenParts, screenMat: extra.screenMat, cars: null, extra,
+      gate: { position: new THREE.Vector3(0, 0.1, 1.12), target: new THREE.Vector3(0, 0.16, -0.6), fov: a => a < 0.9 ? 70 : 48 },
+      view: { position: new THREE.Vector3(0, 0.05, 0.66), target: new THREE.Vector3(0, 0.34, -0.6), fov: a => a < 0.9 ? 80 : 62 } };
+    return root;
+  }
   // 看板：路地にせり出す縦看板は、どの建物に付いても画面（手前）を向く
   for (const s of plan.signs) {
     const host = bmap.get(s.bldgId);

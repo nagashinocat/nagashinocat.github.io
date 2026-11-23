@@ -68,22 +68,26 @@ export function createStage(container) {
     const proj = v.projection ? v.projection(aspect) : new THREE.Matrix4().makePerspective(...frustum(fov, aspect, 0.004), 0.004, 40);
     return { pos, quat: new THREE.Quaternion().setFromRotationMatrix(m), proj };
   }
+  // いまの視点（overview か、路地などの street 視点）と、そこへ向かう途中の補間
+  let mode = { kind: 'overview' };
+  let trans = null; // { from: {pos, quat, proj}, t, dur, ok }
+  function poseOf(m, aspect) {
+    if (m.kind === 'overview') return overviewPose(aspect);
+    view.street = m.v; return streetPose(aspect);
+  }
   function placeCamera() {
     const W = container.clientWidth || 1, H = container.clientHeight || 1;
     const aspect = W / H;
     stage.portrait = aspect < 0.9;
-    const a = overviewPose(aspect);
-    let pos = a.pos, quat = a.quat, proj = a.proj;
-    if (view.street && view.blend > 0) {
-      const b = streetPose(aspect);
-      const t = view.blend;
-      const e = t * t * (3 - 2 * t);
+    const b = poseOf(mode, aspect);
+    let pos = b.pos, quat = b.quat, proj = b.proj;
+    if (trans) {
+      const t = Math.min(1, trans.t / trans.dur), e = t * t * (3 - 2 * t);
+      const a = trans.from;
       pos = _p1.copy(a.pos).lerp(b.pos, e);
       quat = _q1.copy(a.quat).slerp(b.quat, e);
-      // 射影は終わり際に切り替わるよう少し遅らせて混ぜる
-      const pe = Math.min(1, Math.max(0, (e - 0.5) / 0.5));
       proj = _m1.copy(a.proj);
-      for (let i = 0; i < 16; i++) proj.elements[i] += (b.proj.elements[i] - a.proj.elements[i]) * pe;
+      for (let i = 0; i < 16; i++) proj.elements[i] += (b.proj.elements[i] - a.proj.elements[i]) * e;
     }
     camera.position.copy(pos);
     camera.quaternion.copy(quat);
@@ -91,8 +95,13 @@ export function createStage(container) {
     camera.projectionMatrixInverse.copy(proj).invert();
     camera.updateMatrixWorld();
   }
-  function flyTo(mode, dur = 1.2) {
-    return new Promise(ok => { view.fly = { from: view.blend, to: mode === 'street' ? 1 : 0, t: 0, dur, ok }; });
+  // target: 'overview' か、{ position, target, fov } の視点
+  function flyTo(target, dur = 1.2) {
+    return new Promise(ok => {
+      trans?.ok();
+      trans = { from: { pos: camera.position.clone(), quat: camera.quaternion.clone(), proj: camera.projectionMatrix.clone() }, t: 0, dur, ok };
+      mode = target === 'overview' ? { kind: 'overview' } : { kind: 'street', v: target };
+    });
   }
 
   function resize() {
@@ -120,7 +129,7 @@ export function createStage(container) {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     drag.moved = Math.max(drag.moved, Math.hypot(dx, dy));
     // 縦画面は横にスライドして街を見渡す、横画面は少し回り込む
-    if (stage.portrait && view.blend < 0.5) look.tpan = THREE.MathUtils.clamp(drag.pan - dx * 0.0035, -0.48, 0.48);
+    if (stage.portrait && mode.kind === 'overview') look.tpan = THREE.MathUtils.clamp(drag.pan - dx * 0.0035, -0.48, 0.48);
     else look.tyaw = THREE.MathUtils.clamp(drag.yaw - dx * 0.08, -12, 12);
     look.tpitch = THREE.MathUtils.clamp(drag.pitch + dy * 0.06, -8, 10);
   });
@@ -148,7 +157,7 @@ export function createStage(container) {
     look.yaw += (look.tyaw - look.yaw) * Math.min(1, dt * 6);
     look.pitch += (look.tpitch - look.pitch) * Math.min(1, dt * 6);
     look.pan += (look.tpan - look.pan) * Math.min(1, dt * 6);
-    if (view.fly) { const f = view.fly; f.t += dt; const x = Math.min(1, f.t / f.dur); view.blend = f.from + (f.to - f.from) * x; if (x >= 1) { view.fly = null; f.ok(); } }
+    if (trans) { trans.t += dt; if (trans.t >= trans.dur) { placeCamera(); const ok = trans.ok; trans = null; ok(); } }
     placeCamera();
     for (const cb of frameCbs) cb(dt);
     composer ? composer.render() : renderer.render(scene, camera);
@@ -161,9 +170,8 @@ export function createStage(container) {
     get tier() { return tier; },
     setTier(t) { tier = t; buildComposer(); resize(); },
     onFrame(cb) { frameCbs.push(cb); },
-    setStreetView(v) { view.street = v; },
     flyTo,
-    get inStreet() { return view.blend > 0.99; },
+    get inStreet() { return mode.kind === 'street' && !trans; },
     setPickables(list) { pickables.length = 0; pickables.push(...list); },
     pick,
     dispose() { running = false; ro.disconnect(); renderer.dispose(); },
