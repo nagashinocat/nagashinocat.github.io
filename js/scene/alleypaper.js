@@ -9,7 +9,7 @@ import { rng } from '../rng.js';
 import { roundTower } from './tower.js';
 
 const ROOT = new URL('../../', import.meta.url).href;
-export async function buildAlleyPaper({ seed = 5 } = {}) {
+export async function buildAlleyPaper({ seed = 5, entry = 0.62 } = {}) {
 const r = rng(seed);
 const ups = [];
 const scene = new THREE.Scene();
@@ -157,13 +157,30 @@ for (const side of [-1, 1]) for (let z = 0.5; z > -0.6; z -= r.range(0.03, 0.06)
   const m = chochin(r); m.scale.setScalar(0.5); m.position.set(side * (ALLEY / 2 - 0.012), 0.045, z); scene.add(m);
   if (r.next() < 0.25) { const L = new THREE.PointLight('#ff6a3a', 0.025, 0.14, 2); L.position.copy(m.position); scene.add(L); }
 }
+// 路地の入口を手前へのばす（大通りから入ってくる場面用。いつもの路地の並びは変えない）
+if (entry > 0.62) {
+  const r2 = rng(seed + 100);
+  for (const side of [-1, 1]) {
+    let z = entry;
+    while (z > 0.64) {
+      const d = Math.min(r2.range(0.12, 0.2), z - 0.62), w = r2.range(0.16, 0.26), h = side < 0 ? r2.range(0.42, 0.7) : (r2.next() < 0.4 ? r2.range(0.42, 0.62) : r2.range(0.2, 0.32));
+      const b = paperBuildingDetailed(d, h, w, r2, { cheap: true });
+      b.position.set(side * ALLEY / 2, 0, z - d / 2); b.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2; scene.add(b);
+      // 提灯をぽつぽつ
+      if (r2.next() < 0.7) { const s = chochin(r2); s.scale.setScalar(0.5); s.position.set(side * (ALLEY / 2 - 0.012), r2.range(0.04, 0.06), z - d / 2); scene.add(s);
+        const L = new THREE.PointLight('#ff8a4a', 0.03, 0.2, 2); L.position.copy(s.position); scene.add(L); }
+      z -= d;
+    }
+  }
+}
 // 濡れた路面
 {
-  const gt = groundTextures(r, ALLEY + 0.04, 1.6);
-  const top = new THREE.Mesh(new THREE.PlaneGeometry(ALLEY + 0.04, 1.6), new THREE.MeshStandardMaterial({ map: gt.top, transparent: true, depthWrite: false, roughness: 0.6 }));
-  top.rotation.x = -Math.PI / 2; top.position.set(0, 0.002, -0.1); scene.add(top);
-  const mirror = new Reflector(new THREE.PlaneGeometry(ALLEY + 0.04, 1.6), { textureWidth: 1024, textureHeight: 2048, color: 0xb0a0c0 });
-  mirror.rotation.x = -Math.PI / 2; mirror.position.set(0, 0.001, -0.1); scene.add(mirror);
+  const len = entry + 0.98, cz = (entry + 0.08 - 0.9) / 2;
+  const gt = groundTextures(r, ALLEY + 0.04, len);
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(ALLEY + 0.04, len), new THREE.MeshStandardMaterial({ map: gt.top, transparent: true, depthWrite: false, roughness: 0.6 }));
+  top.rotation.x = -Math.PI / 2; top.position.set(0, 0.002, cz); scene.add(top);
+  const mirror = new Reflector(new THREE.PlaneGeometry(ALLEY + 0.04, len), { textureWidth: 1024, textureHeight: 2048, color: 0xb0a0c0 });
+  mirror.rotation.x = -Math.PI / 2; mirror.position.set(0, 0.001, cz); scene.add(mirror);
 }
 
 return { scene, ups };
