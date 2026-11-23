@@ -1,0 +1,223 @@
+// 本の中のジオラマの街（lab/diorama.html から）
+import * as THREE from 'three';
+import { Reflector } from 'three/addons/objects/Reflector.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { paperBuilding, paperBuildingDetailed, paperTank, paperAntenna, paperPipe } from './paper.js';
+import { makeSign, makeSign2, makeSign3, bracket } from './signs.js';
+import { chochin } from './alley.js';
+import { groundTextures } from './alley.js';
+import { glowTex } from './parts.js';
+import { rng } from '../rng.js';
+import { roundTower } from './tower.js';
+
+const ROOT = new URL('../../', import.meta.url).href;
+export async function buildDiorama({ seed = 12 } = {}) {
+const r = rng(seed), ups = [];
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0a0610');
+scene.fog = new THREE.FogExp2('#2a1640', 0.35);
+scene.add(new THREE.HemisphereLight('#4a3a7a', '#1a0c14', 0.3));
+const desk = new THREE.DirectionalLight('#ffd8a8', 0.35); desk.position.set(-3, 5, 4); scene.add(desk);
+const fill = new THREE.DirectionalLight('#ff9ac8', 0.35); fill.position.set(0, 0.6, 3); scene.add(fill);
+const fillL = new THREE.DirectionalLight('#7a8aff', 0.35); fillL.position.set(-3, 1, 1); scene.add(fillL);
+const P = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
+const cv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; };
+
+// ---- 机と開いた本 ----
+{
+  const [c, g] = cv(512, 512); g.fillStyle = '#2a1810'; g.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 80; i++) { g.strokeStyle = `rgba(90,55,30,${Math.random() * 0.5})`; g.lineWidth = 1 + Math.random() * 2; g.beginPath(); const y = Math.random() * 512; g.moveTo(0, y); g.bezierCurveTo(170, y + 8, 340, y - 8, 512, y + 4); g.stroke(); }
+  const t = P(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 4);
+  const d = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.MeshStandardMaterial({ map: t, roughness: 0.7 })); d.rotation.x = -Math.PI / 2; d.position.y = -0.04; scene.add(d);
+  const cover = new THREE.MeshStandardMaterial({ color: '#5a1424', roughness: 0.8 }), paper = new THREE.MeshStandardMaterial({ color: '#d8ccb4', roughness: 1 });
+  for (const s of [-1, 1]) {
+    const cv0 = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.02, 1.62), cover); cv0.position.set(s * 0.58, -0.03, 0); scene.add(cv0);
+    const pg = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.025, 1.56), paper); pg.position.set(s * 0.56, -0.008, 0); scene.add(pg);
+  }
+}
+// ---- 夜空の書き割り（本の奥に立つ紙）：月・雲・遠くの高層ビル群 ----
+{
+  const [c, g] = cv(2048, 900);
+  const gr = g.createLinearGradient(0, 0, 0, 900); gr.addColorStop(0, '#060a26'); gr.addColorStop(0.6, '#1c1446'); gr.addColorStop(1, '#4a1e5a'); g.fillStyle = gr; g.fillRect(0, 0, 2048, 900);
+  for (let i = 0; i < 200; i++) { g.fillStyle = `rgba(255,255,255,${Math.random()})`; g.fillRect(Math.random() * 2048, Math.random() * 400, 1.5, 1.5); }
+  for (let i = 0; i < 18; i++) { const x = Math.random() * 2048, y = 80 + Math.random() * 300; const gg = g.createRadialGradient(x, y, 0, x, y, 200); gg.addColorStop(0, 'rgba(120,90,170,0.3)'); gg.addColorStop(1, 'rgba(120,90,170,0)'); g.fillStyle = gg; g.fillRect(x - 200, y - 200, 400, 400); }
+  g.fillStyle = '#f4f0e0'; g.beginPath(); g.arc(1700, 120, 48, 0, 7); g.fill(); const mg = g.createRadialGradient(1700, 120, 40, 1700, 120, 170); mg.addColorStop(0, 'rgba(220,220,255,0.4)'); mg.addColorStop(1, 'rgba(220,220,255,0)'); g.fillStyle = mg; g.fillRect(1500, 0, 400, 320);
+  // 遠くの摩天楼（ピンクと青のネオンの縁）
+  for (let x = 0; x < 2048;) { const w = 30 + Math.random() * 70, h = 150 + Math.random() * 420, y = 900 - h; g.fillStyle = Math.random() < 0.5 ? '#16123a' : '#1e1648'; g.fillRect(x, y, w, h); const col = Math.random() < 0.5 ? '#ff4fd8' : '#4fc8ff'; g.fillStyle = col; g.fillRect(x, y, w, 3); g.fillRect(x + w / 2 - 1, y - 30, 2, 30); for (let yy = y + 10; yy < 890; yy += 12) for (let xx = x + 4; xx < x + w - 4; xx += 8) if (Math.random() < 0.35) { g.fillStyle = Math.random() < 0.7 ? 'rgba(120,180,255,0.7)' : 'rgba(255,120,220,0.7)'; g.fillRect(xx, yy, 4, 5); } x += w + Math.random() * 10; }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.15), new THREE.MeshBasicMaterial({ map: P(c), toneMapped: false, color: new THREE.Color(0.9, 0.9, 0.9) }));
+  m.position.set(0, 0.84, -0.8); scene.add(m);
+}
+// ---- 地面（濡れた路面と、手前の空き地） ----
+{
+  const under = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.6), new THREE.MeshStandardMaterial({ color: '#1a1420', roughness: 1 })); under.rotation.x = -Math.PI / 2; under.position.y = 0.009; scene.add(under);
+  const gt = groundTextures(r, 2.1, 1.5);
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshStandardMaterial({ map: gt.top, transparent: true, depthWrite: false, roughness: 0.6 }));
+  top.rotation.x = -Math.PI / 2; top.position.y = 0.012; scene.add(top);
+  const mirror = new Reflector(new THREE.PlaneGeometry(2.1, 1.5), { textureWidth: 1024, textureHeight: 768, color: 0x6a5a78 });
+  mirror.rotation.x = -Math.PI / 2; mirror.position.y = 0.011; if (!location.search.includes('nomirror')) scene.add(mirror);
+  // サーチライトは水面に映さない（道路の線のように見えるため）
+  const orb = mirror.onBeforeRender; mirror.onBeforeRender = function (...a) { const hid = []; scene.traverse(o => { if (o.userData.noReflect && o.visible) { o.visible = false; hid.push(o); } }); orb.apply(this, a); hid.forEach(o => o.visible = true); };
+  // 大通りの路面：濡れたアスファルトを少し透かす（空が映りすぎないように）
+  const [ac, ag] = cv(64, 512); ag.fillStyle = 'rgba(26,18,30,0.86)'; ag.fillRect(0, 0, 64, 512);
+  ag.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 30; i++) { const x = Math.random() * 64, y = Math.random() * 512, rr = 4 + Math.random() * 14; const gr = ag.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, 'rgba(0,0,0,0.7)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); ag.fillStyle = gr; ag.fillRect(x - rr, y - rr, rr * 2, rr * 2); }
+  const ave = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshBasicMaterial({ map: P(ac), transparent: true, depthWrite: false, opacity: 0.7 })); ave.rotation.x = -Math.PI / 2; ave.position.set(0, 0.0125, 0); scene.add(ave);
+}
+
+const AX = 0.075; // 真ん中の大通りの半幅
+const RUST = ['#7a6a5e', '#6e5e54', '#84705e', '#5e544e', '#8a7866', '#726054'];
+const signColors = ['#ff4fd8', '#ff4fa3', '#ffb21f', '#ff7a2a', '#b46bff', '#4fd8ff'];
+const B = []; // 建物（あとで看板・配管を付ける）
+function block(x, y, z, w, h, d, opts = {}) {
+  const b = paperBuildingDetailed(w, h, d, r, { sides: false, palette: r.pick(RUST), ground: y > 0.02 ? 0.0 : 0.035, cheap: true, bare: !opts.near });
+  b.position.set(x, 0.012 + y, z + d / 2); b.rotation.y = opts.ry || 0; put(b);
+  B.push({ b, x, y, z, w, h, d }); return b;
+}
+// 両側の塊は、それぞれ大通りへ向けて斜めに振る（写真のようにV字に）
+const SIDE = {}, PIV = {}, DRESSED = new Set();
+for (const sd of [-1, 1]) {
+  const outer = new THREE.Group(), inner = new THREE.Group();
+  PIV[sd] = new THREE.Vector3(sd * AX, 0, -0.62); // 奥の端を軸に、手前を外へ開く（V字）
+  outer.position.copy(PIV[sd]); inner.position.copy(PIV[sd]).negate();
+  outer.add(inner); scene.add(outer); SIDE[sd] = { outer, inner };
+}
+const _bb = new THREE.Box3(), _c = new THREE.Vector3();
+function put(o) {
+  let x = o.position.x;
+  if (Math.abs(x) < 1e-6) { _bb.setFromObject(o); _bb.getCenter(_c); x = _c.x; }
+  if (Math.abs(x) < AX * 0.6 && !o.isLight) { scene.add(o); return; }
+  SIDE[x < 0 ? -1 : 1].inner.add(o);
+}
+
+// ---- 両側の巨大な塊：中央寄りほど高く、外へ・手前へ段々に下がる。上に小さな箱が積み重なる ----
+for (const side of [-1, 1]) {
+  for (let row = 0; row < 7; row++) {
+    const z = -0.62 + row * 0.095;
+    let x = side * AX;
+    while (Math.abs(x) < 1.02) {
+      const w = r.range(0.06, 0.12), d = r.range(0.08, 0.1);
+      const cx = x + side * w / 2;
+      const t = Math.abs(cx) / 1.02;               // 0=中央 1=外
+      const front = (z + 0.62) / 0.66;             // 0=奥 1=手前
+      const H = (0.82 - t * 0.55) * (1 - front * 0.4) * r.range(0.85, 1.12);
+      const nearAve = Math.abs(cx) < AX + 0.16 && front > 0.55;
+      block(cx, 0, z, w, H, d, { near: row >= 6 || (nearAve && row >= 3) });
+      // 上に積む小さな箱（2〜3段）
+      let y = H, ww = w, dd = d;
+      for (let k = 0; k < r.int(1, 3); k++) {
+        ww *= r.range(0.55, 0.85); dd *= r.range(0.6, 0.9); const hh = r.range(0.035, 0.08);
+        const ox = r.range(-(w - ww) / 2, (w - ww) / 2), oz = r.range(-(d - dd) / 2, (d - dd) / 2) - (d - dd) / 2;
+        block(cx + ox, y, z + (d - dd) / 2 + oz * 0.5, ww, hh, dd, { ry: r.range(-0.25, 0.25) });
+        y += hh;
+      }
+      // 屋上：アンテナ・鉄塔・給水塔
+      if (r.next() < 0.5) { const a = paperAntenna(r); a.scale.setScalar(r.range(1.4, 2.6)); a.position.set(cx + r.range(-w * 0.3, w * 0.3), 0.012 + y, z + d / 2); put(a); }
+      if (r.next() < 0.3) { const tk = paperTank(r); tk.scale.setScalar(0.8); tk.position.set(cx, 0.012 + y, z + d * 0.4); put(tk); }
+      x += side * (w + r.range(-0.004, 0.006));
+    }
+  }
+}
+// ---- 通路と同じくらいの作り込み：手前を向いた面にも、大通りに向いた面にも看板・提灯・日よけ ----
+{
+  const N3 = ['猫', 'ながしの猫', 'nagashinocat'];
+  const KINDS = ['neon', 'lightbox', 'marquee', 'round', 'bulbvert', 'shield', 'arrow', 'plank', 'tin', 'pawn', 'neonicon', 'cloth', 'nobori', 'enamel', 'letters', 'led', 'fan'];
+  const S2 = ['shield', 'arrow', 'plank', 'tin', 'pawn', 'bulbvert', 'neonicon'], S3 = ['cloth', 'nobori', 'enamel', 'letters', 'barber', 'led', 'fan'];
+  const mk = (kind, text, color, size) => S3.includes(kind) ? makeSign3(kind, text, color, size, { rng: () => r.next() }) : S2.includes(kind) ? makeSign2(kind, text === 'nagashinocat' && kind === 'shield' ? 'nagashinocat 猫' : text, color, size, { rng: () => r.next() }) : makeSign(kind, text, color, size, { vertical: size[1] > size[0], rng: () => r.next() });
+  const SIZE = (kind, text) => ({ marquee: [0.012 + text.length * 0.0065, 0.018], round: [0.03, 0.03], shield: [0.03, 0.034], arrow: [0.05, 0.016], plank: [0.05, 0.018], tin: [0.022, 0.03], pawn: [0.035, 0.035], bulbvert: [0.02, 0.02 + [...text].length * 0.018], neonicon: [0.032, 0.032], cloth: [0.02, 0.02 + [...text].length * 0.018], nobori: [0.016, 0.07], enamel: [0.045, 0.018], letters: [0.013 * [...text].length, 0.016], led: [0.07, 0.01], fan: [0.05, 0.028] }[kind] || [0.018, 0.02 + [...text].length * 0.014]);
+  const used = new Set();
+  const dress = (o, faceX) => {
+    DRESSED.add(o);
+    // faceX: 0 なら手前(+z)の面、±1 なら大通りへ向いた側面
+    const n = faceX ? r.int(2, 5) : r.int(1, 4);
+    const span = faceX ? o.d : o.w;
+    for (let k = 0; k < n; k++) {
+      let kind, text, tries = 0;
+      do { kind = r.pick(KINDS); text = r.pick(N3); tries++; } while (used.has(o.x.toFixed(2) + kind + text) && tries < 10);
+      used.add(o.x.toFixed(2) + kind + text);
+      const kk = r.next() < 0.3 ? 1 : r.next() < 0.6 ? 0.75 : 0.55;
+      const size = SIZE(kind, text).map(v => v * kk);
+      const sg = mk(kind, text, r.pick(signColors), size); if (sg.update) ups.push(sg.update);
+      sg.group.traverse(m => { for (const mm of [].concat(m.material || [])) if (mm && mm.toneMapped === false && mm.color) mm.color.multiplyScalar(1.3); });
+      const y = r.range(0.05, Math.max(0.06, Math.min(o.h * 0.85, 0.42) - size[1] / 2));
+      const u = r.range(-span * 0.4, span * 0.4);
+      const project = !['plank', 'tin', 'enamel', 'letters', 'led', 'fan'].includes(kind) && r.next() < 0.75;
+      const out = project ? (kind === 'marquee' ? 0.006 : size[0]) / 2 + 0.01 : 0.004;
+      if (!faceX) { sg.group.position.set(o.x + u, y, o.z + o.d + out); }
+      else { sg.group.position.set(o.x + faceX * (o.w / 2 + out), y, o.z + o.d / 2 + u); if (!project) sg.group.rotation.y = faceX * Math.PI / 2; }
+      put(sg.group);
+      if (project) { const arm = bracket(out); if (!faceX) { arm.position.set(o.x + u, y + size[1] / 2 - 0.002, o.z + o.d); } else { arm.position.set(o.x + faceX * o.w / 2, y + size[1] / 2 - 0.002, o.z + o.d / 2 + u); arm.rotation.y = faceX * Math.PI / 2; } put(arm); }
+    }
+  };
+  const base = B.filter(o => o.y === 0);
+  const frontRow = new Map();
+  for (const o of base) { const key = Math.round(o.x * 50); if (!frontRow.has(key) || frontRow.get(key).z < o.z) frontRow.set(key, o); }
+  for (const o of frontRow.values()) if (Math.abs(o.x) < 0.95) dress(o, 0);
+  for (const o of base) if (Math.abs(Math.abs(o.x) - o.w / 2 - AX) < 0.01) dress(o, o.x > 0 ? -1 : 1);
+  // 手前の店先：提灯の列と暖かい光
+  for (const o of frontRow.values()) {
+    if (Math.abs(o.x) > 0.9) continue;
+    const n = Math.max(1, Math.floor(o.w / 0.025));
+    if (r.next() < 0.7) for (let k = 0; k < n; k++) { const l = chochin(r); l.scale.setScalar(0.55); l.position.set(o.x - o.w / 2 + (k + 0.5) * o.w / n, 0.05, o.z + o.d + 0.03); put(l); }
+    if (r.next() < 0.6) { const L = new THREE.PointLight(r.pick(['#ffb060', '#ff9040', '#ff70a0']), 0.08, 0.22, 2); L.position.set(o.x, 0.05, o.z + o.d + 0.04); put(L); }
+  }
+  // 大通り沿いの提灯
+  for (const sx of [-1, 1]) for (let z = -0.55; z < 0.08; z += r.range(0.03, 0.06)) { if (r.next() < 0.3) continue; const l = chochin(r); l.scale.setScalar(0.5); l.position.set(sx * (AX - 0.012), 0.045, z); put(l); }
+  // 太い配管を手前の面に
+  for (let i = 0; i < 16; i++) {
+    const o = r.pick([...frontRow.values()]); const x0 = o.x + r.range(-o.w * 0.4, o.w * 0.4), zf = o.z + o.d + 0.008;
+    const top = r.range(0.1, Math.min(o.h * 0.9, 0.45)), bend = r.range(0.04, 0.1) * (r.next() < 0.5 ? -1 : 1);
+    put(paperPipe([new THREE.Vector3(x0, 0.012, zf), new THREE.Vector3(x0, top, zf), new THREE.Vector3(x0 + bend, top, zf), new THREE.Vector3(x0 + bend, top + 0.05, zf)], r.range(0.004, 0.006), r.pick(['#8a8a8e', '#6a6a70', '#7a5a44'])));
+  }
+}
+// 塊ごとに大通りへ向けて回す
+for (const sd of [-1, 1]) SIDE[sd].outer.rotation.y = sd * 0.42;
+// 看板を付けていない建物は、それぞれ大通りの方へ向きをばらばらに振る
+for (const o of B) if (!DRESSED.has(o)) { const sd = o.x < 0 ? -1 : 1; o.b.rotation.y = r.range(-0.18, 0.18); }
+// ---- 奥の丸いタワー（路地の突き当たりと同じビル） ----
+{
+  const [sc, sg] = cv(640, 360); const im = new Image(); im.src = ROOT + 'assets/shots/aiaigasa.jpg'; await im.decode().catch(() => {});
+  sg.fillStyle = '#000'; sg.fillRect(0, 0, 640, 360); if (im.naturalWidth) { const k = Math.max(640 / im.naturalWidth, 360 / im.naturalHeight); sg.drawImage(im, (640 - im.naturalWidth * k) / 2, (360 - im.naturalHeight * k) / 2, im.naturalWidth * k, im.naturalHeight * k); }
+  const tw = roundTower({ R: 0.12, H: 1.05, screenTex: P(sc), rng: () => r.next() });
+  tw.group.position.set(0, 0, -0.72); scene.add(tw.group); ups.push(tw.update);
+}
+// ---- 遠くの摩天楼（3Dで数本、ピンクと青の頂部） ----
+for (let i = 0; i < 16; i++) {
+  const x = (i % 2 ? 1 : -1) * r.range(0.25, 1.1), z = r.range(-0.78, -0.7), h = r.range(0.7, 1.25), w = r.range(0.05, 0.1);
+  const [c, g] = cv(64, 256); g.fillStyle = '#121638'; g.fillRect(0, 0, 64, 256); for (let y = 6; y < 256; y += 8) for (let xx = 4; xx < 60; xx += 7) if (Math.random() < 0.4) { g.fillStyle = Math.random() < 0.6 ? '#7fb8ff' : '#ff8ae0'; g.fillRect(xx, y, 3, 4); }
+  const sky = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), new THREE.MeshBasicMaterial({ map: P(c), color: new THREE.Color(0.7, 0.7, 0.9) })); sky.position.set(x, h / 2, z); scene.add(sky);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(w * 0.4, 0.08, 4), new THREE.MeshBasicMaterial({ color: r.next() < 0.5 ? new THREE.Color(2.5, 0.6, 2) : new THREE.Color(0.6, 1.6, 2.6), toneMapped: false })); cap.position.set(x, h + 0.04, z); scene.add(cap);
+}
+// ---- 両側の奥の高架（ピンクの光る縁） ----
+{
+  const deckM = new THREE.MeshStandardMaterial({ color: '#2a2436', roughness: 0.9 });
+  for (const side of [-1, 1]) {
+    const road = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.014, 0.05), deckM); road.position.set(side * 0.9, 0.32, -0.66); road.rotation.y = side * 0.25; scene.add(road);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.004, 0.004), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 0.8, 2.4), toneMapped: false })); rail.position.set(side * 0.9, 0.33, -0.64); rail.rotation.y = side * 0.25; scene.add(rail);
+    for (let k = -2; k <= 2; k++) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.32, 0.02), deckM); leg.position.set(side * 0.9 + k * 0.15 * Math.cos(0.25), 0.16, -0.66 - side * k * 0.15 * Math.sin(0.25)); scene.add(leg); }
+  }
+}
+// ---- 手前の空き地：金網（左）・ドラム缶（右）・壊れた木材・雑草 ----
+{
+  const [c, g] = cv(64, 64); g.strokeStyle = '#2a2428'; g.lineWidth = 3; for (let k = -64; k < 128; k += 14) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k + 64, 64); g.stroke(); g.beginPath(); g.moveTo(k + 64, 0); g.lineTo(k, 64); g.stroke(); }
+  const t = P(c); t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  for (const [x, z, len, ry] of [[-0.62, 0.55, 0.55, -0.35], [0.82, 0.62, 0.3, 0.3]]) {
+    const tt = t.clone(); tt.needsUpdate = true; tt.repeat.set(len * 45, 5);
+    const net = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.13), new THREE.MeshStandardMaterial({ map: tt, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide }));
+    net.position.set(x, 0.077, z); net.rotation.y = ry; net.rotation.z = r.range(-0.06, 0.06); scene.add(net);
+    for (let k = -2; k <= 2; k++) { const post = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.15, 6), new THREE.MeshStandardMaterial({ color: '#3a2a22' })); post.position.set(x + Math.cos(ry) * k * len / 4, 0.075, z - Math.sin(ry) * k * len / 4); post.rotation.z = r.range(-0.2, 0.2); scene.add(post); }
+  }
+  for (const [x, z, col] of [[-0.3, 0.68, '#6a4a32'], [0.42, 0.66, '#8a3a1e'], [0.5, 0.68, '#3a4a6a']]) { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.06, 16), new THREE.MeshStandardMaterial({ color: col, roughness: 0.8 })); b.position.set(x, 0.042, z); scene.add(b); }
+  for (let i = 0; i < 22; i++) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, r.range(0.12, 0.28)), new THREE.MeshStandardMaterial({ color: '#4a3020' })); p.position.set(r.pick([-1, 1]) * r.range(0.55, 0.95), 0.03, r.range(0.5, 0.72)); p.rotation.set(r.range(-0.8, 0.8), r.range(0, 3), r.range(-0.4, 0.4)); scene.add(p); }
+  const blade = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.003, 0.025).translate(0, 0.0125, 0), new THREE.MeshStandardMaterial({ color: '#3a4a2a', side: THREE.DoubleSide }), 900);
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), E = new THREE.Euler();
+  for (let i = 0; i < 900; i++) { const x = r.pick([-1, 1]) * r.range(0.25, 1.0), z = r.range(0.3, 0.78); Q.setFromEuler(E.set(r.range(-0.4, 0.4), r.range(0, 6), r.range(-0.4, 0.4))); M.compose(new THREE.Vector3(x, 0.012, z), Q, new THREE.Vector3(1, r.range(0.6, 1.8), 1)); blade.setMatrixAt(i, M); }
+  scene.add(blade);
+}
+// ---- 湯気（両側の根元から） ----
+{
+  const [c, g] = cv(64, 64); for (let i = 0; i < 6; i++) { const x = 20 + Math.random() * 24, y = 20 + Math.random() * 24, rr = 10 + Math.random() * 10; const gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, 'rgba(230,200,255,0.5)'); gr.addColorStop(1, 'rgba(230,200,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }
+  const st = P(c);
+  for (let i = 0; i < 26; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: st, transparent: true, opacity: 0.3, depthWrite: false })); const side = r.pick([-1, 1]); s.position.set(side * r.range(0.2, 1.0), r.range(0.03, 0.12), r.range(-0.1, 0.25)); s.scale.setScalar(r.range(0.12, 0.3)); scene.add(s); }
+}
+
+return { scene, ups, sides: SIDE, B };
+}

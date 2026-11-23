@@ -1,6 +1,7 @@
 // 看板のいろいろ：ネオン管・中から光る行灯看板・アメリカの電球看板・丸いネオン・色あせたペンキ看板
 // どれも小さめ。壁からアームで突き出すか、壁に貼る
 import * as THREE from 'three';
+const ROOT = new URL('../../', import.meta.url);
 import { INK } from '../draw/manga.js';
 import { glowTex } from './parts.js';
 
@@ -398,7 +399,7 @@ export async function standSign(work, { w = 0.09, rng = Math.random } = {}) {
   g.fillStyle = '#0e0810'; g.fillRect(0, 0, PW, PH);
   const bh = PW * 9 / 16;
   if (work.shot) {
-    const im = new Image(); im.src = work.shot.startsWith('/') || work.shot.startsWith('http') ? work.shot : '../' + work.shot;
+    const im = new Image(); im.src = new URL(work.shot, ROOT).href;
     try { await im.decode(); const k = Math.max(PW / im.naturalWidth, bh / im.naturalHeight); g.drawImage(im, (PW - im.naturalWidth * k) / 2, (bh - im.naturalHeight * k) / 2, im.naturalWidth * k, im.naturalHeight * k); } catch { }
   }
   // 題名の帯
@@ -427,7 +428,7 @@ export async function standSign(work, { w = 0.09, rng = Math.random } = {}) {
 
 // お店の前に並べる小さなスタンド看板（3種類）
 // pillar: 縦長の両面スタンド / easel: A型の黒板 / hang: 枠から吊るした板
-async function loadImg(src) { if (!src) return null; const im = new Image(); im.src = /^(\/|http)/.test(src) ? src : '../' + src; try { await im.decode(); return im; } catch { return null; } }
+async function loadImg(src) { if (!src) return null; const im = new Image(); im.src = new URL(src, ROOT).href; try { await im.decode(); return im; } catch { return null; } }
 function cover(g, im, x, y, w, h) { if (!im) return; const k = Math.max(w / im.naturalWidth, h / im.naturalHeight); g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip(); g.drawImage(im, x + (w - im.naturalWidth * k) / 2, y + (h - im.naturalHeight * k) / 2, im.naturalWidth * k, im.naturalHeight * k); g.restore(); }
 function glowText(g, t, x, y, px, col, font = JP) { g.font = `${px}px ${font}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = col; g.shadowBlur = px * 0.4; g.fillStyle = col; g.fillText(t, x, y); g.shadowBlur = 0; g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillText(t, x, y); }
 function fitPx(g, t, maxW, px, font = JP) { g.font = `${px}px ${font}`; while (px > 10 && g.measureText(t).width > maxW) { px--; g.font = `${px}px ${font}`; } return px; }
