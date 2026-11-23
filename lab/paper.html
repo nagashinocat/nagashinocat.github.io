@@ -10,9 +10,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
-import { paperBuilding } from '../js/scene/paper.js';
+import { paperBuilding, paperBuildingDetailed } from '../js/scene/paper.js';
 import { makeSign, bracket } from '../js/scene/signs.js';
-import { groundTextures } from '../js/scene/alley.js';
+import { groundTextures, chochin } from '../js/scene/alley.js';
 import { glowTex } from '../js/scene/parts.js';
 import { rng } from '../js/rng.js';
 try { await document.fonts.load('40px "Dela Gothic One"'); await document.fonts.load('40px "Righteous"'); } catch {}
@@ -41,7 +41,7 @@ for (const side of [-1, 1]) {
   let z = 0.62;
   while (z > -0.8) {
     const d = r.range(0.12, 0.2), w = r.range(0.16, 0.26), h = r.range(0.55, 1.05);
-    const b = paperBuilding(d, h, w, r);  // 正面（+z）を路地へ向ける
+    const b = paperBuildingDetailed(d, h, w, r);  // 正面（+z）を路地へ向ける
     b.position.set(side * ALLEY / 2, 0, z - d / 2);
     b.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2;
     scene.add(b);
@@ -75,8 +75,7 @@ for (const side of [-1, 1]) {
 }
 // 提灯の列と光
 for (const side of [-1, 1]) for (let z = 0.5; z > -0.6; z -= 0.07) {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.008, 12, 8), new THREE.MeshBasicMaterial({ color: '#ff4a2a', toneMapped: false }));
-  m.scale.y = 1.3; m.position.set(side * (ALLEY / 2 - 0.03), 0.06, z); scene.add(m);
+  const m = chochin(r); m.position.set(side * (ALLEY / 2 - 0.03), 0.05, z); scene.add(m);
   if (Math.round(z * 100) % 14 === 0) { const L = new THREE.PointLight('#ff6a3a', 0.05, 0.3, 2); L.position.copy(m.position); scene.add(L); }
 }
 // 濡れた路面

@@ -58,7 +58,7 @@ function chochinTexture(ch, color) {
   g.fillStyle = '#1a0a0a'; g.fillText(ch, 64, 132); g.fillText(ch, 192, 132);
   return tx(c);
 }
-function chochin(r) {
+export function chochin(r) {
   const g = new THREE.Group();
   const pts = []; for (let i = 0; i <= 12; i++) { const t = i / 12; pts.push(new THREE.Vector2(0.006 + 0.0065 * Math.sin(t * Math.PI), (t - 0.5) * 0.022)); }
   const mat = new THREE.MeshBasicMaterial({ map: chochinTexture(r.pick(['祭', '酒', '麺', '福', '亭', '寿']), r.pick(['#e8341f', '#e8341f', '#f2e6c8', '#ff7a1a'])), toneMapped: false });
