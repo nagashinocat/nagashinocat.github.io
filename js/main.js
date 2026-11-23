@@ -4,6 +4,7 @@ import { renderList, DISTRICT_LABEL } from './list.js';
 import { createBillboard, drawDots } from './billboard.js';
 import { createSelection } from './selection.js';
 import { planDistrict } from './layout.js';
+import { syncVideos, shouldRedraw } from './util.js';
 
 const $ = id => document.getElementById(id);
 const KINDS = ['games', 'tools', 'wip'];
@@ -35,8 +36,9 @@ async function start() {
 }
 
 function fallback() {
-  $('loading').remove();
-  $('app').remove();
+  try { window.__hub?.stage?.dispose(); } catch { /* もう止まっている */ }
+  $('loading')?.remove();
+  $('app')?.remove();
   $('open-list').hidden = true;
   openList(true);
 }
@@ -47,6 +49,8 @@ async function startCity(works) {
   const { createBook } = await import('./scene/book.js');
   const { animateDistrict } = await import('./scene/district.js');
 
+  // 看板の文字は一度だけ描くので、先にフォントを待つ（最大2.5秒）
+  try { await Promise.race([Promise.all(['400 40px "Dela Gothic One"', '400 40px "DotGothic16"'].map(f => document.fonts.load(f))), new Promise(ok => setTimeout(ok, 2500))]); } catch { /* 代わりの字で描く */ }
   const by = worksByDistrict(works);
   const plans = Object.fromEntries(KINDS.map(k => [k, planDistrict(k, by[k], SEED)]));
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -66,7 +70,8 @@ async function startCity(works) {
 
   // 品質：最初の60フレームが重ければ下げる
   let frames = 0, acc = 0;
-  let scroll = 0, lastText = '';
+  let scroll = 0, lastText = '', drawAcc = 0;
+  const redraw = {};
   stage.onFrame(dt => {
     if (frames < 60) { frames++; acc += dt; if (frames === 60 && acc / 60 > 1 / 38 && stage.tier === 'high') stage.setTier('low'); }
     selection.locked = book.busy;
@@ -75,11 +80,15 @@ async function startCity(works) {
     hub.selected = st.mode === 'ticker' ? null : st.workId;
     if (st.text !== lastText) { lastText = st.text; scroll = 0; updatePlayButton(st); }
     scroll += dt * 26;
+    syncVideos(videos, st.mode === 'cm' ? st.video : null);
     const color = st.mode === 'wip' ? '#ffd400' : book.current === 'tools' ? '#7fe6ff' : '#ff9a1f';
     const { c: cv, tex: ct } = screens[book.current];
     const media = st.mode === 'cm' ? mediaFor(st) : null;
+    const animated = media ? 'video' : null; // 動画・写真は動くので毎回（30fpsまで）
+    if (animated) { drawAcc += dt; if (drawAcc < 1 / 30) { if (book.district) animateDistrict(book.district, book.time, dt, hub.selected); return; } drawAcc = 0; }
+    else if (!shouldRedraw(redraw, book.current + st.mode + st.text, scroll * 0.45, null)) { if (book.district) animateDistrict(book.district, book.time, dt, hub.selected); return; }
     const band = cv.height * 0.22;
-    const dots = (target, h) => drawDots(target, st.text, scroll * 1.6, { dir: 'h', cols: Math.round(target.width / 6), rows: Math.round(h / 6), color, bg: book.current === 'tools' ? '#04141c' : '#120808' });
+    const dots = (target, h) => drawDots(target, st.text, scroll * 0.45, { dir: 'h', cols: Math.round(target.width / 6), rows: Math.round(h / 6), color, bg: book.current === 'tools' ? '#04141c' : '#120808' });
     if (media) {
       // CM：動画か画面写真を映し、下にドット文字の帯
       const ctx = cv.getContext('2d');
@@ -111,7 +120,6 @@ async function startCity(works) {
         v.play().catch(() => billboard.videoFailed(st.workId));
         videos.set(st.video, v);
       }
-      for (const [src, o] of videos) if (src !== st.video && !o.paused) o.pause();
       if (v.paused && !v.error) v.play().catch(() => {});
       if (v.readyState >= 2) { hub.videoReady = true; return v; }
     }
@@ -122,7 +130,6 @@ async function startCity(works) {
     }
     return null;
   }
-  for (const v of videos.values()) v.pause();
 
   // 看板の操作
   const el = stage.renderer.domElement;
@@ -133,7 +140,7 @@ async function startCity(works) {
     if (hit?.workId) selection.hover(hit.workId);
   });
   el.addEventListener('pointerup', e => {
-    if (stage.lastDragDistance > 8) return; // ドラッグは選択にしない
+    if (!stage.isTap(e.clientX, e.clientY)) return; // ドラッグは選択にしない
     selection.tap(stage.pick(e.clientX, e.clientY));
   });
 

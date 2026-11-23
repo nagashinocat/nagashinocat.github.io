@@ -6,6 +6,7 @@ import { buildFactory } from './factory.js';
 import { buildLot } from './lot.js';
 import { INK, screentone, inkLine } from '../draw/manga.js';
 import { rng } from '../rng.js';
+import { runExclusive } from '../util.js';
 
 export const KINDS = ['games', 'tools', 'wip'];
 const H = Math.PI / 2;
@@ -177,8 +178,7 @@ export function createBook(stage, { works, plans, screens, reducedMotion = false
     d.visible = false;
   }
 
-  book.open = async () => {
-    book.busy = true;
+  book.open = () => runExclusive(book, async () => {
     right.rotation.z = Math.PI; // 閉じた状態：右半分が左に重なる
     right.position.y = 0.06;
     await wait(0.25 / speed);
@@ -186,12 +186,9 @@ export function createBook(stage, { works, plans, screens, reducedMotion = false
     book.district = getDistrict('games');
     await popUp(book.district);
     await dive(book.district);
-    book.busy = false;
-  };
+  });
 
-  book.turnTo = async kind => {
-    if (book.busy || kind === book.current || !KINDS.includes(kind)) return;
-    book.busy = true;
+  book.turnTo = kind => (kind === book.current || !KINDS.includes(kind)) ? Promise.resolve() : runExclusive(book, async () => {
     const forward = KINDS.indexOf(kind) > KINDS.indexOf(book.current);
     const oldK = book.current;
     await stage.flyTo('overview', 1.0 / speed);
@@ -209,7 +206,6 @@ export function createBook(stage, { works, plans, screens, reducedMotion = false
     book.district = getDistrict(kind);
     await popUp(book.district);
     await dive(book.district);
-    book.busy = false;
-  };
+  });
   return book;
 }

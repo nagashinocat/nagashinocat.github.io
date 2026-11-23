@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { createTapGuard } from '../util.js';
 
 const DEG = Math.PI / 180;
 const TARGET = new THREE.Vector3(0, 0.5, 0);
@@ -111,9 +112,11 @@ export function createStage(container) {
   // ドラッグで ±12° だけ覗き込む
   let drag = null;
   const el = renderer.domElement;
-  el.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, yaw: look.tyaw, pitch: look.tpitch, pan: look.tpan, moved: 0 }; });
+  const tap = createTapGuard(8);
+  el.addEventListener('pointerdown', e => { tap.down(e.clientX, e.clientY); drag = { x: e.clientX, y: e.clientY, yaw: look.tyaw, pitch: look.tpitch, pan: look.tpan, moved: 0 }; });
   window.addEventListener('pointermove', e => {
     if (!drag) return;
+    tap.move(e.clientX, e.clientY);
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     drag.moved = Math.max(drag.moved, Math.hypot(dx, dy));
     // 縦画面は横にスライドして街を見渡す、横画面は少し回り込む
@@ -121,7 +124,8 @@ export function createStage(container) {
     else look.tyaw = THREE.MathUtils.clamp(drag.yaw - dx * 0.08, -12, 12);
     look.tpitch = THREE.MathUtils.clamp(drag.pitch + dy * 0.06, -8, 10);
   });
-  window.addEventListener('pointerup', () => { stage.lastDragDistance = drag?.moved ?? 0; drag = null; });
+  window.addEventListener('pointerup', () => { drag = null; });
+  window.addEventListener('pointercancel', () => { drag = null; tap.cancel(); });
 
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
@@ -151,7 +155,9 @@ export function createStage(container) {
   }
 
   const stage = {
-    renderer, scene, camera, lastDragDistance: 0,
+    renderer, scene, camera,
+    // canvas の pointerup で呼ぶ：この操作がタップなら true
+    isTap: (x, y) => tap.up(x, y),
     get tier() { return tier; },
     setTier(t) { tier = t; buildComposer(); resize(); },
     onFrame(cb) { frameCbs.push(cb); },
