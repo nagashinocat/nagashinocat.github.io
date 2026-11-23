@@ -212,7 +212,7 @@ export function paperBuilding(w, h, d, r, opts = {}) {
   const g = new THREE.Group();
   g.add(box);
   // 紙の白い切り口（角の線）
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d)), new THREE.LineBasicMaterial({ color: '#f2ece0' }));
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d)), new THREE.LineBasicMaterial({ color: '#e8dcc8', transparent: true, opacity: 0.35 }));
   edges.position.copy(box.position); g.add(edges);
   // 屋上ののりしろ
   const tabMat = new THREE.MeshStandardMaterial({ color: '#d8cfbe', roughness: 1, side: THREE.DoubleSide });
