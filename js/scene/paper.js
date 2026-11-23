@@ -197,7 +197,7 @@ export function paperBuilding(w, h, d, r, opts = {}) {
     front: drawPaperFace(w, h, 'front', r, opts), back: drawPaperFace(w, h, 'side', r, lo),
     right: drawPaperFace(d, h, 'side', r, opts.sides ? opts : lo), left: drawPaperFace(d, h, 'side', r, opts.sides ? opts : lo), roof: drawPaperFace(w, d, 'roof', r, { ...opts, ppu: 1200, max: 1024 }),
   };
-  const mat = f => new THREE.MeshStandardMaterial({ map: tex(f.color), emissiveMap: tex(f.emit), emissive: 0xffffff, emissiveIntensity: 0.55, roughness: 0.92, metalness: 0 });
+  const mat = f => new THREE.MeshStandardMaterial({ map: tex(f.color), emissiveMap: tex(f.emit), emissive: 0xffffff, emissiveIntensity: 0.16, roughness: 0.92, metalness: 0 });
   const mats = [mat(faces.right), mat(faces.left), mat(faces.roof), new THREE.MeshStandardMaterial({ color: '#2a2224' }), mat(faces.front), mat(faces.back)];
   // 紙のたわみ：正面を少しふくらませる
   const geo = new THREE.BoxGeometry(w, h, d, 6, 12, 2);
@@ -357,7 +357,7 @@ export function paperBuildingDetailed(w, h, d, r, opts = {}) {
   const front = drawPaperFace(w, h, 'front', r, { ...opts, flat: false, windows });
   const lo = { ...opts, ppu: 500, max: 512 };
   const faces = { front, back: drawPaperFace(w, h, 'side', r, lo), right: drawPaperFace(d, h, 'side', r, lo), left: drawPaperFace(d, h, 'side', r, lo), roof: drawPaperFace(w, d, 'roof', r, { ...opts, ppu: 1200, max: 1024 }) };
-  const mat = f => new THREE.MeshStandardMaterial({ map: tex(f.color), emissiveMap: tex(f.emit), emissive: 0xffffff, emissiveIntensity: 0.55, roughness: 0.92 });
+  const mat = f => new THREE.MeshStandardMaterial({ map: tex(f.color), emissiveMap: tex(f.emit), emissive: 0xffffff, emissiveIntensity: 0.16, roughness: 0.92 });
   const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [mat(faces.right), mat(faces.left), mat(faces.roof), new THREE.MeshStandardMaterial({ color: '#2a2224' }), mat(faces.front), mat(faces.back)]);
   box.position.set(0, h / 2, -d / 2);
   const g = new THREE.Group(); g.add(withEdges(box));
