@@ -2,7 +2,6 @@
 import * as THREE from 'three';
 import { popupAngle, foldAngle } from './popup.js';
 import { buildDistrict, groundTexture } from './district.js';
-import { buildPictureDistrict, pictureProjection } from './picture.js';
 import { INK, screentone, inkLine } from '../draw/manga.js';
 import { rng } from '../rng.js';
 
@@ -82,7 +81,7 @@ function halfPlane(map, side) {
   return new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map }));
 }
 
-export function createBook(stage, { works, plans, billboardTex, billboardWideTex, pictures = {}, reducedMotion = false }) {
+export function createBook(stage, { works, plans, billboardTex, billboardWideTex, reducedMotion = false }) {
   const { scene } = stage;
   const speed = reducedMotion ? 5 : 1;
   // 空と遠景
@@ -125,10 +124,7 @@ export function createBook(stage, { works, plans, billboardTex, billboardWideTex
   const districts = {};
   const getDistrict = k => {
     if (!districts[k]) {
-      const P = pictures[k];
-      districts[k] = P
-        ? buildPictureDistrict(P, works.filter(w => w.district === k), { billboard: billboardWideTex })
-        : buildDistrict(plans[k], works, { billboard: billboardTex });
+      districts[k] = buildDistrict(plans[k], works, { billboard: k === 'games' ? billboardWideTex : billboardTex });
       districts[k].visible = false; scene.add(districts[k]);
     }
     return districts[k];
@@ -145,7 +141,7 @@ export function createBook(stage, { works, plans, billboardTex, billboardWideTex
   const stand = (p, a) => p.userData.stand ? p.userData.stand(a) : (p.rotation.x = a - H);
   const streetOf = d => {
     const v = d.userData.view;
-    if (v?.picture) return { position: v.position, target: v.target, projection: aspect => pictureProjection(v.picture, aspect) };
+    if (v) return v;
     return { position: new THREE.Vector3(0, 0.045, 0.92), target: new THREE.Vector3(0, 0.42, -0.7), fov: 58 };
   };
   async function dive(d) { stage.setPickables([...d.userData.workSigns, ...d.userData.screenParts]); stage.setStreetView(streetOf(d)); await stage.flyTo('street', 1.8 / speed); }

@@ -60,8 +60,7 @@ async function startCity(works) {
   const screenTex = new THREE.CanvasTexture(bc); screenTex.colorSpace = THREE.SRGBColorSpace;
   const bw = document.createElement('canvas'); bw.width = 320; bw.height = 320;
   const wideTex = new THREE.CanvasTexture(bw); wideTex.colorSpace = THREE.SRGBColorSpace;
-  const { KOWLOON } = await import('./scene/picture.js');
-  const book = createBook(stage, { works, plans, billboardTex: screenTex, billboardWideTex: wideTex, pictures: { games: KOWLOON }, reducedMotion });
+  const book = createBook(stage, { works, plans, billboardTex: screenTex, billboardWideTex: wideTex, reducedMotion });
   const billboard = createBillboard(works);
   const selection = createSelection(billboard, { navigate: url => { location.href = url; } });
   const hub = { stage, book, billboard, selection, plans, works, screenTex, wideTex, ready: false, selected: null, videoReady: false };

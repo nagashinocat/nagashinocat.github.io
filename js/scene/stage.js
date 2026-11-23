@@ -63,7 +63,8 @@ export function createStage(container) {
     // ドラッグで少しだけ横・縦に動いて、奥行き（視差）を見せる
     const pos = v.position.clone().add(new THREE.Vector3(look.yaw * 0.0016, Math.max(-0.008, look.pitch * 0.0012), 0));
     const m = new THREE.Matrix4().lookAt(pos, v.target.clone().add(new THREE.Vector3(look.yaw * 0.0016, look.pitch * 0.0012, 0)), camera.up);
-    const proj = v.projection ? v.projection(aspect) : new THREE.Matrix4().makePerspective(...frustum(v.fov || 55, aspect, 0.01), 0.01, 40);
+    const fov = typeof v.fov === 'function' ? v.fov(aspect) : (v.fov || 55);
+    const proj = v.projection ? v.projection(aspect) : new THREE.Matrix4().makePerspective(...frustum(fov, aspect, 0.004), 0.004, 40);
     return { pos, quat: new THREE.Quaternion().setFromRotationMatrix(m), proj };
   }
   function placeCamera() {

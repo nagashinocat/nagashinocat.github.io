@@ -3,7 +3,7 @@
 // Bldg: w = x方向の幅, d = z方向の奥行き, face = 正面の向き（east=+x, west=-x, south=+z）
 import { rng } from './rng.js';
 
-export const ALLEY = 0.24;
+export const ALLEY = 0.3;
 const X = 1, Z = 0.7;
 const PROFILE = {
   games: { inner: [0.5, 1.0], outer: [0.75, 1.3], front: [0.09, 0.17], styles: ['tenement', 'neon', 'tower'] },
@@ -45,7 +45,7 @@ export function planDistrict(kind, works, seed) {
     }
   }
   // 突き当たりの掲示板ビル
-  const bb = { id: `${kind}-billboard`, x: 0, z: BB_Z, w: ALLEY - 0.004, d: BB_D, h: Math.max(...buildings.map(b => b.h)) + (kind === 'games' ? 0.3 : 0.18), style: kind === 'games' ? 'billboard' : kind === 'tools' ? 'crt' : 'roadsign', row: 0, face: 'south', strip: 'end' };
+  const bb = { id: `${kind}-billboard`, x: 0, z: BB_Z, w: ALLEY - 0.004, d: BB_D, h: Math.max(...buildings.map(b => b.h)) + (kind === 'games' ? 0.55 : 0.18), style: kind === 'games' ? 'billboard' : kind === 'tools' ? 'crt' : 'roadsign', row: 0, face: 'south', strip: 'end' };
   buildings.push(bb);
   const billboard = { bldgId: bb.id, x: bb.x, z: bb.z, w: bb.w, h: bb.h };
 
@@ -56,7 +56,7 @@ export function planDistrict(kind, works, seed) {
   const order = [];
   for (let i = 0; i < Math.max(L.length, R.length); i++) { if (L[i]) order.push(L[i]); if (R[i]) order.push(R[i]); }
   // 一番手前は画面の端で切れやすいので1つ奥から
-  const hosts = order.length > 4 ? [...order.slice(2), ...order.slice(0, 2)] : order;
+  const hosts = order.length > 6 ? [...order.slice(3), ...order.slice(0, 3)] : order;
   const signs = [];
   works.forEach((w, i) => {
     const host = hosts[i % hosts.length];

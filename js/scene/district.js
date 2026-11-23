@@ -5,6 +5,7 @@ import { drawSign } from '../draw/sign.js';
 import { drawClutterStrip } from '../draw/clutter.js';
 import { INK, screentone, crosshatch, inkLine } from '../draw/manga.js';
 import { rng } from '../rng.js';
+import { addKowloon } from './kowloon.js';
 
 const H = Math.PI / 2;
 const inkMat = new THREE.LineBasicMaterial({ color: INK });
@@ -94,7 +95,7 @@ function tubePath(d, r) {
   return new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.05);
 }
 
-export function buildDistrict(plan, works, textures) {
+export function buildDistrict(plan, works, textures, opts = {}) {
   const r = rng(plan.buildings.length * 13 + plan.kind.length);
   const root = new THREE.Group();
   root.name = `district-${plan.kind}`;
@@ -109,7 +110,7 @@ export function buildDistrict(plan, works, textures) {
     // 正面の幅 fw と奥行き fd（建物の向きで x/z が入れ替わる）
     const side = b0.face === 'east' || b0.face === 'west';
     const b = { ...b0, fw: side ? b0.d : b0.w, fd: side ? b0.w : b0.d };
-    const { w, h } = facadeSize({ w: b.fw, h: b.h });
+    const { w, h } = facadeSize({ w: b.fw, h: b.h }, plan.kind === 'games' && b.strip === 'inner' ? 1.8 : 1);
     const c = canvas(w, h);
     drawFacade(c, { ...b, w: b.fw }, plan.kind, rng(r.int(1, 1e9)));
     const ft = tex(c);
@@ -163,7 +164,8 @@ export function buildDistrict(plan, works, textures) {
       sign.position.set(x, y - b.h / 2, b.fd / 2 + t / 2 + 0.002 + r.range(0, 0.004));
     }
     mesh.add(sign);
-    if (isWork) { sign.userData = { workId: s.workId, phase: r.range(0, 6), faceMat }; workSigns.push(sign); }
+    sign.userData.color = s.color;
+    if (isWork) { Object.assign(sign.userData, { workId: s.workId, phase: r.range(0, 6), faceMat }); workSigns.push(sign); }
     signs.push(sign);
   }
 
@@ -227,7 +229,7 @@ export function buildDistrict(plan, works, textures) {
 
   // 高速道路（繁華街のみ）
   let cars = null;
-  if (plan.kind === 'games') {
+  if (false) {
     const zH = -0.7 + (1.4 / rows) * 3;
     const road = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.012, 0.06), new THREE.MeshBasicMaterial({ color: '#3a3346' }));
     road.position.set(0, 0.2, zH);
@@ -266,9 +268,9 @@ export function buildDistrict(plan, works, textures) {
     }
     bb.mesh.add(screen);
   } else {
-    const sw = bb.b.w * 0.86, sh = Math.min(bb.b.h * 0.62, sw * 3.4);
+    const sw = bb.b.fw * 0.86, sh = plan.kind === 'games' ? sw * 1.05 : Math.min(bb.b.h * 0.62, sw * 3.4);
     screen = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), screenMat);
-    screen.position.set(0, bb.b.h / 2 - sh / 2 - 0.05, bb.b.d / 2 + 0.008);
+    screen.position.set(0, bb.b.h / 2 - sh / 2 - (plan.kind === 'games' ? 0.17 : 0.05), bb.b.fd / 2 + 0.008);
     screen.userData.billboard = true;
     const frameCol = plan.kind === 'wip' ? '#ffd400' : '#ff4fa3';
     const frame = new THREE.Mesh(new THREE.PlaneGeometry(sw * 1.08, sh * 1.03), new THREE.MeshBasicMaterial({ color: frameCol }));
@@ -279,13 +281,18 @@ export function buildDistrict(plan, works, textures) {
   const screenParts = [];
   screen.traverse(o => { if (o.userData.billboard) screenParts.push(o); });
 
-  root.userData = { kind: plan.kind, pivots, decor, workSigns, signs, screenParts, screenMat, cars };
+  const extra = plan.kind === 'games' ? addKowloon(root, plan, bmap, decor, r, { pivots, signs }) : null;
+  if (extra) { extra.wet.visible = false; }
+  root.userData = { kind: plan.kind, pivots, decor, workSigns, signs, screenParts, screenMat, cars, extra,
+    view: plan.kind === 'games' ? { position: new THREE.Vector3(0, 0.04, 0.66), target: new THREE.Vector3(0, 0.6, -0.6), fov: a => a < 0.9 ? 80 : 64 } : null };
   return root;
 }
 
 // 毎フレーム：看板の明滅、車、選択中の強調
 export function animateDistrict(group, time, dt, selectedId) {
   const u = group.userData;
+  u.extra?.animate(time, dt);
+  if (u.extra) u.extra.wet.visible = u.decor.scale.y > 0.5;
   for (const s of u.workSigns) {
     const on = s.userData.workId === selectedId;
     const k = on ? 1.35 : 0.8 + 0.2 * Math.sin(time * (Math.PI * 2 / 2.4) + s.userData.phase);

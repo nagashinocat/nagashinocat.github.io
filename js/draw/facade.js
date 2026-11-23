@@ -3,16 +3,16 @@ import { INK, inkRect, inkLine, screentone, crosshatch } from './manga.js';
 
 const WARM = ['#ffd27a', '#ffc861', '#ffe2a3', '#fff1c9'];
 const WALLS = {
-  games: ['#3a1a33', '#2f1630', '#45203a', '#2a1a3a', '#4a2236', '#36203f'],
+  games: ['#5e4a52', '#6b5650', '#54434e', '#735e58', '#4a3c48', '#66524f'],
   tools: ['#5b4a46', '#4c4140', '#66503f', '#53473f'],
   wip: ['#8a8378', '#9a9284', '#7d7a72'],
 };
 const NEON = ['#ff4fa3', '#4fd8ff', '#b46bff', '#ffb21f'];
 
 export const PX_PER_UNIT = 420;
-export function facadeSize(b) {
-  const s = PX_PER_UNIT;
-  return { w: Math.max(48, Math.round(b.w * s)), h: Math.min(1024, Math.max(48, Math.round(b.h * s))) };
+export function facadeSize(b, scale = 1) {
+  const s = PX_PER_UNIT * scale;
+  return { w: Math.max(48, Math.round(b.w * s)), h: Math.min(2048, Math.max(48, Math.round(b.h * s))) };
 }
 
 export function drawFacade(canvas, b, district, r) {
