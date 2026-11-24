@@ -502,3 +502,53 @@ export async function shopStand(work, type = 'pillar') {
   hit.userData = { workId: work.id, faceMat, color: col };
   return { group, hit, faceMat };
 }
+
+// 工場の作品パネル：空中に浮かぶホログラム（画面写真＋題名、水色の枠）。台座つき
+export async function holoPanel(work, { w = 0.07, h = 0.05 } = {}) {
+  const im = await loadImg(work.shot);
+  const c = cv(420, 300), g = c.getContext('2d');
+  g.fillStyle = 'rgba(6,30,48,0.85)'; g.fillRect(0, 0, 420, 300);
+  cover(g, im, 14, 14, 392, 200);
+  // 走査線と水色の色かぶり
+  g.fillStyle = 'rgba(80,200,255,0.18)'; g.fillRect(14, 14, 392, 200);
+  for (let y = 14; y < 214; y += 4) { g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(14, y, 392, 1); }
+  g.strokeStyle = '#7fe6ff'; g.lineWidth = 4; g.strokeRect(6, 6, 408, 288);
+  g.lineWidth = 2; g.strokeRect(14, 14, 392, 200);
+  for (const [x, y, dx, dy] of [[6, 6, 1, 1], [414, 6, -1, 1], [6, 294, 1, -1], [414, 294, -1, -1]]) { g.fillStyle = '#bff4ff'; g.fillRect(x, y, dx * 30, dy * 6); g.fillRect(x, y, dx * 6, dy * 30); }
+  const px = fitPx(g, work.title, 390, 40);
+  glowText(g, work.title, 210, 254, px, '#7fe6ff');
+  const faceMat = new THREE.MeshBasicMaterial({ map: tx(c), transparent: true, opacity: 0.92, side: THREE.DoubleSide, toneMapped: false, depthWrite: false, color: new THREE.Color(1.3, 1.3, 1.3) });
+  const group = new THREE.Group();
+  const hit = new THREE.Mesh(new THREE.PlaneGeometry(w, h), faceMat);
+  hit.position.y = 0.075; hit.userData.workId = work.id; hit.userData.faceMat = faceMat; group.add(hit);
+  // 投影の光の筋
+  const beamM = new THREE.MeshBasicMaterial({ color: '#4fd8ff', transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  const beam = new THREE.Mesh(new THREE.ConeGeometry(w * 0.55, 0.075 - h / 2 - 0.012, 4, 1, true), beamM); beam.rotation.y = Math.PI / 4; beam.rotation.x = Math.PI; beam.position.y = 0.012 + (0.075 - h / 2 - 0.012) / 2; group.add(beam);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.011, 0.012, 12), new THREE.MeshStandardMaterial({ color: '#c8ccd4', metalness: 0.7, roughness: 0.3 })); base.position.y = 0.006; group.add(base);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.0085, 0.0012, 6, 20), new THREE.MeshBasicMaterial({ color: '#7fe6ff', toneMapped: false })); ring.rotation.x = Math.PI / 2; ring.position.y = 0.0122; group.add(ring);
+  return { group, hit, update: t => { faceMat.opacity = 0.86 + 0.06 * Math.sin(t * 7 + hit.id) + (Math.random() < 0.01 ? -0.3 : 0); hit.position.y = 0.075 + Math.sin(t * 1.3 + hit.id) * 0.0015; } };
+}
+
+// 空き地の作品看板：杭に打ちつけた板（画面写真＋題名＋工事中の縞）
+export async function boardSign(work, { w = 0.06, h = 0.045 } = {}) {
+  const im = await loadImg(work.shot);
+  const c = cv(400, 300), g = c.getContext('2d');
+  g.fillStyle = '#6a5038'; g.fillRect(0, 0, 400, 300);
+  for (let y = 0; y < 300; y += 60) { g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, y, 400, 3); for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(30,18,10,${Math.random() * 0.3})`; g.fillRect(Math.random() * 400, y + Math.random() * 60, 30 + Math.random() * 60, 1.5); } }
+  cover(g, im, 26, 22, 348, 170);
+  g.fillStyle = 'rgba(40,20,60,0.25)'; g.fillRect(26, 22, 348, 170);
+  // 工事中の縞
+  g.save(); g.beginPath(); g.rect(0, 200, 400, 26); g.clip(); for (let x = -40; x < 440; x += 40) { g.fillStyle = '#f2c21a'; g.beginPath(); g.moveTo(x, 200); g.lineTo(x + 20, 200); g.lineTo(x + 46, 226); g.lineTo(x + 26, 226); g.fill(); } g.restore();
+  const px = fitPx(g, work.title, 370, 40);
+  g.font = `${px}px ${JP}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#f4efe2'; g.fillText(work.title, 200, 262);
+  for (let i = 0; i < 70; i++) { g.fillStyle = `rgba(90,40,16,${Math.random() * 0.4})`; g.fillRect(Math.random() * 400, Math.random() * 300, 2 + Math.random() * 8, 2 + Math.random() * 8); }
+  for (const [x, y] of [[12, 12], [388, 12], [12, 288], [388, 288]]) { g.fillStyle = '#2a2420'; g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill(); }
+  const faceMat = new THREE.MeshBasicMaterial({ map: tx(c), toneMapped: false, color: new THREE.Color(1.05, 1.05, 1.05) });
+  const wood = new THREE.MeshStandardMaterial({ color: '#4a3424', roughness: 0.9 });
+  const group = new THREE.Group();
+  const hit = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.002), [wood, wood, wood, wood, faceMat, wood]);
+  hit.position.y = 0.028 + h / 2; hit.userData.workId = work.id; hit.userData.faceMat = faceMat; group.add(hit);
+  for (const sx of [-1, 1]) { const st = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.03 + h, 0.003), wood); st.position.set(sx * w * 0.36, (0.03 + h) / 2, -0.002); st.rotation.z = sx * 0.03; group.add(st); }
+  group.rotation.z = (Math.random() - 0.5) * 0.08;
+  return { group, hit };
+}

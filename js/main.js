@@ -1,6 +1,6 @@
 // 起動と配線
 import { loadWorks, worksByDistrict } from './works.js';
-import { renderList } from './list.js';
+import { renderList, DISTRICT_LABEL } from './list.js';
 import { createBillboard, drawDots } from './billboard.js';
 import { createSelection } from './selection.js';
 import { syncVideos, shouldRedraw } from './util.js';
@@ -58,7 +58,7 @@ async function startCity(works) {
   if (manual) { window.__frame = t => world.renderAt(t); document.title = 'ready'; } // 撮影・確認用
 
   // 選ばれた看板は明るく脈打つ
-  const faceBase = new Map(world.stands.map(h => [h, h.userData.faceMat.color.clone()]));
+  const faceBase = new WeakMap();
   let scroll = 0, lastText = '', drawAcc = 0;
   const redraw = {};
   world.onFrame((dt, t) => {
@@ -66,7 +66,7 @@ async function startCity(works) {
     billboard.tick(dt);
     const st = billboard.state();
     hub.selected = st.mode === 'ticker' ? null : st.workId;
-    for (const [h, c0] of faceBase) { const on = h.userData.workId === hub.selected; h.userData.faceMat.color.copy(c0).multiplyScalar(on ? 1.35 + 0.25 * Math.sin(t * 6) : 1); }
+    for (const h of world.stands) { if (!faceBase.has(h)) faceBase.set(h, h.userData.faceMat.color.clone()); const on = h.userData.workId === hub.selected; h.userData.faceMat.color.copy(faceBase.get(h)).multiplyScalar(on ? 1.35 + 0.25 * Math.sin(t * 6) : 1); }
     if (st.text !== lastText) { lastText = st.text; scroll = 0; updatePlayButton(st); }
     scroll += dt * 26;
     syncVideos(videos, st.mode === 'cm' ? st.video : null);
@@ -153,6 +153,20 @@ async function startCity(works) {
   if (!world.inAlley) skip.hidden = false;
   await new Promise(ok => { const w = () => world.inAlley ? ok() : setTimeout(w, 100); w(); });
   skip.hidden = true;
+  // ページをめくる：路地（ゲーム）⇔ 第3工場（道具）⇔ 空き地（工事中）
+  const turnNav = $('turn');
+  const showPage = k => { $('district-name').textContent = DISTRICT_LABEL[k][0]; $('district-sub').textContent = DISTRICT_LABEL[k][1]; $('prev').disabled = k === world.PAGES[0]; $('next').disabled = k === world.PAGES.at(-1); };
+  async function turn(dir) {
+    const i = world.PAGES.indexOf(world.page) + dir, k = world.PAGES[i];
+    if (!k || world.busy) return;
+    billboard.clear(); selection.hover(null);
+    $('prev').disabled = $('next').disabled = true;
+    try { await world.turnTo(k); } catch (e) { console.warn(e); }
+    showPage(world.page);
+  }
+  $('prev').addEventListener('click', () => turn(-1));
+  $('next').addEventListener('click', () => turn(1));
+  showPage(world.page); turnNav.hidden = false;
   hint.textContent = coarse ? '看板をタップ → もう一度タップであそぶ' : '看板にカーソル → クリックであそぶ';
   hint.hidden = false;
   hub.ready = true;

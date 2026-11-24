@@ -7,6 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildDiorama } from './diorama.js';
 import { buildAlleyPaper } from './alleypaper.js';
 import { addCat, addWhale } from './creatures.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createTapGuard } from '../util.js';
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
@@ -74,7 +75,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
 
   const cam = new THREE.PerspectiveCamera(56, W / H, 0.005, 30), camA = cam.clone();
   const D = await buildDiorama();
-  const A = await buildAlleyPaper({ entry: 1.5, works, screenCanvas });
+  const A = await buildAlleyPaper({ entry: 1.5, works: works?.filter(w => w.district === 'games'), screenCanvas });
 
   // 2つの場面をそれぞれ描いて、重ねて溶かす（暗転させない）
   const bloomRes = tier === 'high' ? 1 : 0.5;
@@ -156,6 +157,38 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   const onUp = () => { drag = null; }, onCancel = () => { drag = null; tap.cancel(); };
   addEventListener('pointermove', onMove); addEventListener('pointerup', onUp); addEventListener('pointercancel', onCancel);
 
+  // ---- ページ：路地（ゲーム）・第3工場（道具）・空き地（工事中）。めくると溶けるように切りかわる ----
+  const PAGES = ['games', 'tools', 'wip'];
+  const pages = { games: { S: A, comp: compA, cam: camA, exposure: 0.72, targets: [...A.stands, A.towerScreen, cat.hit, whale.hit] } };
+  let pmrem = null;
+  async function buildPage(kind) {
+    if (pages[kind]) return pages[kind];
+    const ws = works?.filter(w => w.district === kind);
+    const mod = kind === 'tools' ? await import('./factorypaper.js') : await import('./lotpaper.js');
+    const S = kind === 'tools' ? await mod.buildFactoryPaper({ works: ws, screenCanvas }) : await mod.buildLotPaper({ works: ws, screenCanvas });
+    if (S.scene.userData.needsEnv) { pmrem ??= new THREE.PMREMGenerator(renderer); S.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; S.scene.environmentIntensity = 0.35; }
+    const c = new THREE.PerspectiveCamera(56, W / H, 0.005, 30);
+    const comp = mkComp(S.scene, c); comp.setSize(W, H);
+    const pose = kind === 'tools' ? mod.FACTORY_CAM : mod.LOT_CAM;
+    pages[kind] = { S, comp, cam: c, pose, exposure: kind === 'tools' ? 0.8 : 0.78, targets: [...S.stands, S.towerScreen] };
+    return pages[kind];
+  }
+  let page = 'games', turning = null; // turning: { from, to, t0 }
+  const TURN = 1.3;
+  const poseCam = (P, push, aspect) => {
+    const c = P.cam, { pos, look, fov } = P.pose;
+    const fwd = new THREE.Vector3(...look).sub(new THREE.Vector3(...pos)).normalize();
+    c.position.set(...pos).addScaledVector(fwd, push); c.lookAt(...look); c.fov = aspect < 1 ? Math.min(95, fov * (1 + (1 - aspect) * 0.55)) : fov; c.aspect = aspect; c.updateProjectionMatrix();
+  };
+  async function turnTo(kind) {
+    if (turning || kind === page || !PAGES.includes(kind) || time < T_ALLEY) return page;
+    turning = { from: page, to: kind, t0: null };
+    try { await buildPage(kind); } catch (e) { turning = null; throw e; }
+    turning.t0 = time;
+    await new Promise(ok => { turning.done = ok; });
+    return page;
+  }
+
   // ---- 時間と描画 ----
   let time = reducedMotion ? T_ALLEY : 0;
   const frameCbs = [];
@@ -182,6 +215,18 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
       cat.update(t); whale.update(t);
     }
     for (const cb of frameCbs) cb(dt, t);
+    // 他のページ（工場・空き地）とめくりの途中
+    const aspect2 = W / H;
+    const lookQ = q => q.premultiply(yawQ).multiply(pitchQ);
+    const drawPage = (kind, push) => { const P = pages[kind]; if (kind !== 'games') { poseCam(P, push, aspect2); lookQ(P.cam.quaternion); for (const u of P.S.ups) u && u(t); } else if (push) camA.position.addScaledVector(camA.getWorldDirection(new THREE.Vector3()), push); renderer.toneMappingExposure = P.exposure; P.comp.render(); return P.comp; };
+    if (turning && turning.t0 != null) {
+      const u = clamp01((t - turning.t0) / TURN), e = ease(u);
+      const a = drawPage(turning.from, e * 0.25), b = drawPage(turning.to, -(1 - e) * 0.25);
+      out(a, b, e);
+      if (u >= 1) { page = turning.to; const done = turning.done; turning = null; done && done(); }
+      return;
+    }
+    if (k >= 1 && page !== 'games') { out(drawPage(page, 0), pages[page].comp, 0); return; }
     if (k < 1) { renderer.toneMappingExposure = 0.8; compD.render(); }
     if (k > 0) { renderer.toneMappingExposure = 0.72; compA.render(); }
     out(k < 1 ? compD : compA, k > 0 ? compA : compD, ease(k));
@@ -190,25 +235,25 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   function resize() {
     [W, H] = size(); if (!W || !H) return;
     renderer.setSize(W, H);
-    for (const c of [compD, compA]) c.setSize(W, H);
+    for (const c of [compD, ...Object.values(pages).map(p => p.comp)]) c.setSize(W, H);
     for (const b of blooms) b.setSize(W * bloomRes, H * bloomRes);
   }
   const ro = new ResizeObserver(resize); ro.observe(container);
 
   // タッチの相手を探す
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const targets = [...A.stands, A.towerScreen, cat.hit, whale.hit];
   function pick(x, y) {
-    if (time < T_ALLEY - 0.6) return null;
+    if (time < T_ALLEY - 0.6 || turning) return null;
+    const P = pages[page], targets = P.targets, camP = page === 'games' ? camA : P.cam;
     const r = el.getBoundingClientRect();
     ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
-    camA.updateMatrixWorld(); ray.setFromCamera(ndc, camA);
+    camP.updateMatrixWorld(); ray.setFromCamera(ndc, camP);
     const hit = ray.intersectObjects(targets, false)[0];
     if (!hit) return null;
     const o = hit.object;
     if (o === cat.hit) return { cat: true };
     if (o === whale.hit) return { whale: true };
-    if (o === A.towerScreen) return { billboard: true };
+    if (o === P.S.towerScreen) return { billboard: true };
     return o.userData.workId ? { workId: o.userData.workId } : null;
   }
 
@@ -222,14 +267,18 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   if (running) loop(); else renderAt(time);
 
   return {
-    renderer, stands: A.stands, screenTex: A.screenTex, cat, whale,
+    renderer, cat, whale, PAGES,
+    get page() { return page; }, get busy() { return !!turning; },
+    get stands() { return Object.values(pages).flatMap(p => p.S.stands); },
+    get screenTex() { return pages[page].S.screenTex; },
+    turnTo,
     get time() { return time; },
     get inAlley() { return time >= T_ALLEY; },
     skip() { if (time < T_ALLEY) time = T_ALLEY; },
     pick, isTap: (x, y) => tap.up(x, y), onFrame(cb) { frameCbs.push(cb); },
     renderAt,
     // 確認用：物の画面上の位置
-    screenOf(o) { const v = o.getWorldPosition(new THREE.Vector3()).project(camA), r = el.getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
+    screenOf(o) { const v = o.getWorldPosition(new THREE.Vector3()).project(page === 'games' ? camA : pages[page].cam), r = el.getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
     dispose() { running = false; ro.disconnect(); removeEventListener('pointermove', onMove); removeEventListener('pointerup', onUp); removeEventListener('pointercancel', onCancel); renderer.dispose(); },
   };
 }

@@ -1,0 +1,28 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ページ試作</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap">
+<style>html,body{margin:0;height:100%;background:#05030a;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+const Q = new URLSearchParams(location.search), P = Q.get('p') || 'factory';
+try { await document.fonts.load('40px "Dela Gothic One"'); } catch {}
+const mod = P === 'factory' ? await import('../js/scene/factorypaper.js') : await import('../js/scene/lotpaper.js');
+const S = P === 'factory' ? await mod.buildFactoryPaper() : await mod.buildLotPaper();
+const CAM = P === 'factory' ? mod.FACTORY_CAM : mod.LOT_CAM;
+const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = +(Q.get('exp') || 0.75); document.body.append(renderer.domElement);
+const cam = new THREE.PerspectiveCamera(CAM.fov, innerWidth / innerHeight, 0.005, 30);
+const pos = (Q.get('cam') || '').split(',').filter(Boolean).map(Number);
+cam.position.set(...(pos.length === 6 ? pos.slice(0, 3) : CAM.pos)); cam.lookAt(...(pos.length === 6 ? pos.slice(3) : CAM.look));
+if (S.scene.userData.needsEnv) { const { RoomEnvironment } = await import('three/addons/environments/RoomEnvironment.js'); const pm = new THREE.PMREMGenerator(renderer); S.scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; S.scene.environmentIntensity = 0.35; }
+const comp = new EffectComposer(renderer); comp.addPass(new RenderPass(S.scene, cam)); comp.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.7, 0.6, 0.88)); comp.addPass(new OutputPass());
+const p0 = cam.position.clone(), q0 = cam.quaternion.clone(), fwd = cam.getWorldDirection(new THREE.Vector3());
+const frame = t => { if (Q.has('drift')) { cam.position.copy(p0).addScaledVector(fwd, t * 0.025).add(new THREE.Vector3(Math.sin(t * 0.3) * 0.02, 0, 0)); } for (const u of S.ups) u && u(t); comp.render(); };
+if (Q.has('manual')) { window.__frame = frame; document.title = 'ready'; }
+else { const t0 = performance.now(); const loop = () => { frame((performance.now() - t0) / 1000); requestAnimationFrame(loop); }; loop(); setTimeout(() => document.title = 'ready', 1500); }
+</script></body></html>

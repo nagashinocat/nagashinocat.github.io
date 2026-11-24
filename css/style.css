@@ -81,4 +81,4 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .loading p { animation: none; } }
 /* 本が開くあいだの早送り */
 .skip { position: fixed; right: calc(var(--safe-r, 0px) + 16px); bottom: calc(var(--safe-b) + 20px); z-index: 6; opacity: .8; }
-/* 紙の街では、ページめくりは使わない */
+.turn[hidden] { display: none; }
