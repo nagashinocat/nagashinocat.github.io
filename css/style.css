@@ -34,18 +34,25 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .loading.done { opacity: 0; }
 @keyframes blink { 50% { opacity: .4; } }
 
-.hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + 84px); margin: 0; z-index: 5;
+.hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + 24px); margin: 0; z-index: 5;
   background: var(--paper); color: var(--ink); border: 3px solid var(--ink); border-radius: 18px; padding: 6px 14px; font-size: 14px; font-weight: 700;
   white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; pointer-events: none; transition: opacity .4s; }
 .hint::after { content: ""; position: absolute; left: 50%; bottom: -12px; border: 8px solid transparent; border-top-color: var(--ink); transform: translateX(-50%); }
 
-.play { position: fixed; left: 50%; bottom: calc(var(--safe-b) + 84px); transform: translateX(-50%); z-index: 6;
+.play { position: fixed; left: 50%; bottom: calc(var(--safe-b) + 24px); transform: translateX(-50%); z-index: 6;
   background: var(--pink); color: #fff; border: 3px solid var(--ink); border-radius: 12px; box-shadow: 4px 4px 0 var(--ink);
   padding: 10px 18px; min-height: 48px; font: 400 17px/1.2 "Dela Gothic One", sans-serif; max-width: calc(100vw - 24px);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 2px 2px 0 var(--ink); }
 .play.wip { background: #6b6470; }
 
-.turn { position: fixed; left: 0; right: 0; bottom: calc(var(--safe-b) + 14px); display: flex; justify-content: center; align-items: center; gap: 14px; z-index: 5; pointer-events: none; }
+.turn { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* ページ名は左上、めくる矢印は画面の両端のまん中 */
+.turn .pageinfo { position: absolute; top: calc(var(--safe-t) + 12px); left: 12px; text-align: left; }
+.turn .edge { position: absolute; top: 50%; transform: translateY(-50%); opacity: .85; }
+.turn .edge.left { left: 10px; }
+.turn .edge.right { right: 10px; }
+.turn .edge:disabled { opacity: 0; pointer-events: none; }
 .turn > * { pointer-events: auto; }
 .pageinfo { background: var(--ink); border: 3px solid var(--paper); border-radius: 10px; padding: 4px 16px; text-align: center; min-width: 120px; }
 .pageinfo span { display: block; font: 400 20px/1.2 "Dela Gothic One", sans-serif; color: #fff; }

@@ -17,13 +17,12 @@ function openList(solo = false) {
   $('list').classList.toggle('solo', solo);
   if (!solo) $('close-list').focus();
 }
-function closeList() { $('list').hidden = true; $('open-list').focus(); }
+function closeList() { $('list').hidden = true; }
 
 async function start() {
   let works = [];
   try { works = await loadWorks('data/works.json'); } catch (e) { console.warn('作品データを読めませんでした', e); }
   renderList($('list-body'), works);
-  $('open-list').addEventListener('click', () => openList());
   $('close-list').addEventListener('click', closeList);
   addEventListener('keydown', e => { if (e.key === 'Escape' && !$('list').hidden && !$('list').classList.contains('solo')) closeList(); });
 
@@ -36,7 +35,6 @@ function fallback() {
   try { window.__hub?.world?.dispose(); } catch { /* もう止まっている */ }
   $('loading')?.remove();
   $('app')?.remove();
-  $('open-list').hidden = true;
   openList(true);
 }
 

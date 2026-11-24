@@ -26,10 +26,7 @@
 <body>
 <div id="app" aria-hidden="true"></div>
 
-<header class="top">
-  <h1 class="logo">nagashinocat<small>の開発置き場</small></h1>
-  <button id="open-list" class="btn">作品いちらん</button>
-</header>
+<h1 class="sr-only">nagashinocat の開発置き場</h1>
 
 <div id="loading" class="loading"><p>ひらいています…</p></div>
 
@@ -40,9 +37,9 @@
 <button id="skip" class="btn skip" hidden>スキップ ▶▶</button>
 
 <nav class="turn" id="turn" hidden>
-  <button id="prev" class="btn round" aria-label="前のページ">◀</button>
-  <div class="pageinfo"><span id="district-name">路地</span><small id="district-sub">ゲーム</small></div>
-  <button id="next" class="btn round" aria-label="次のページ">▶</button>
+  <div class="pageinfo" aria-live="polite"><span id="district-name">路地</span><small id="district-sub">ゲーム</small></div>
+  <button id="prev" class="btn round edge left" aria-label="前のページ">◀</button>
+  <button id="next" class="btn round edge right" aria-label="次のページ">▶</button>
 </nav>
 
 <section id="list" class="list" hidden aria-label="作品いちらん">

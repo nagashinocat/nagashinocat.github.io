@@ -86,11 +86,13 @@ async function runSite(ctx) {
       assert(label.includes('工場'), label);
     });
     await page.screenshot({ path: `${OUT}site-${name}-tools.png` });
-    await check(`site ${name}: 一覧が開いてリンクが正しい`, async () => {
-      await page.click('#open-list');
-      await page.waitForSelector('#list:not([hidden])');
-      const href = await page.getAttribute('#list a[href="/aiaigasa/"]', 'href');
-      assert(href === '/aiaigasa/', href);
+    await check(`site ${name}: 矢印は両端のまん中、ページ名は左上`, async () => {
+      const r = await page.evaluate(() => Object.fromEntries(['prev', 'next', 'district-name'].map(id => { const b = document.getElementById(id).getBoundingClientRect(); return [id, [b.left, b.top, b.right, b.bottom]]; })));
+      const W = page.viewportSize().width, H = page.viewportSize().height;
+      assert(r.prev[0] < 30 && Math.abs((r.prev[1] + r.prev[3]) / 2 - H / 2) < 10, 'prev ' + r.prev);
+      assert(r.next[2] > W - 30 && Math.abs((r.next[1] + r.next[3]) / 2 - H / 2) < 10, 'next ' + r.next);
+      assert(r['district-name'][0] < 40 && r['district-name'][1] < 80, 'label ' + r['district-name']);
+      assert(!(await page.$('#open-list')), '作品いちらんボタンが残っている');
     });
     await page.close();
   }
@@ -99,15 +101,10 @@ async function runSite(ctx) {
     const { page } = await openPage(ctx, '/', { width: 360, height: 740 }, { hasTouch: true });
     await page.click('#skip').catch(() => {});
     await page.waitForFunction(() => window.__hub?.ready === true, null, { timeout: 240000 });
-    await page.click('#open-list');
-    await page.screenshot({ path: `${OUT}site-360-list.png`, fullPage: true });
+    await page.screenshot({ path: `${OUT}site-360.png` });
     await check('360px: 横にはみ出さない', async () => {
-      const w = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.querySelector('#list').scrollWidth));
+      const w = await page.evaluate(() => document.documentElement.scrollWidth);
       assert(w <= 360, String(w));
-    });
-    await check('360px: 長い題が折り返す', async () => {
-      const lines = await page.evaluate(() => { const el = [...document.querySelectorAll('#list h3')].find(h => h.textContent.startsWith('鉛筆削り')); const lh = parseFloat(getComputedStyle(el).lineHeight); return el.getBoundingClientRect().height / lh; });
-      assert(lines >= 1.9, String(lines));
     });
     await page.close();
   }
@@ -133,12 +130,18 @@ async function runSite(ctx) {
   // WebGL なし → 一覧が本体
   {
     const b = await chromium.launch({ args: ['--disable-webgl', '--disable-3d-apis'] });
-    const page = await b.newPage({ viewport: { width: 390, height: 844 } });
+    const page = await b.newPage({ viewport: { width: 360, height: 740 } });
     await routeThree(page);
     const errs = []; page.on('pageerror', e => errs.push(e.message));
     await page.goto(ctx.srv.url + '/');
     await check('WebGLなし: 一覧が見えてリンクが正しい', async () => {
       await page.waitForSelector('#list:not([hidden]) a[href="/aiaigasa/"]', { timeout: 15000 });
+    });
+    await check('WebGLなし 360px: 長い題が折り返す、はみ出さない', async () => {
+      const lines = await page.evaluate(() => { const el = [...document.querySelectorAll('#list h3')].find(h => h.textContent.startsWith('鉛筆削り')); const lh = parseFloat(getComputedStyle(el).lineHeight); return el.getBoundingClientRect().height / lh; });
+      assert(lines >= 1.9, String(lines));
+      const w = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.querySelector('#list').scrollWidth));
+      assert(w <= 360, String(w));
     });
     await check('WebGLなし: 未捕捉エラーなし', () => assert(errs.length === 0, errs.join(' / ')));
     await page.screenshot({ path: `${OUT}site-nowebgl.png` });
