@@ -10,6 +10,7 @@ import { addCat, addWhale } from './creatures.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildFactoryMini, buildLotMini } from './minidiorama.js';
 import { counterBoard } from './counterboard.js';
+import { optimizeScene, adaptiveResolution, mergeStatic, DETAIL_LAYER } from './perf.js';
 import { createTapGuard } from '../util.js';
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
@@ -68,19 +69,20 @@ function camAt(c, t, keys, aspect) {
  */
 export async function createWorld(container, { works, screenCanvas, tier = 'high', reducedMotion = false, manual = false } = {}) {
   const renderer = new THREE.WebGLRenderer({ antialias: tier === 'high', powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, tier === 'high' ? 2 : 1.25));
+  const PR_MAX = Math.min(devicePixelRatio, tier === 'high' ? 1.5 : 1);
+  renderer.setPixelRatio(PR_MAX);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   container.append(renderer.domElement);
   const size = () => [container.clientWidth || innerWidth, container.clientHeight || innerHeight];
   let [W, H] = size();
   renderer.setSize(W, H);
 
-  const cam = new THREE.PerspectiveCamera(56, W / H, 0.005, 30), camA = cam.clone();
+  const cam = new THREE.PerspectiveCamera(56, W / H, 0.005, 30); cam.layers.enable(DETAIL_LAYER); const camA = cam.clone();
   const D = await buildDiorama();
   const A = await buildAlleyPaper({ entry: 1.5, works: works?.filter(w => w.district === 'games'), screenCanvas });
 
   // 2つの場面をそれぞれ描いて、重ねて溶かす（暗転させない）
-  const bloomRes = tier === 'high' ? 1 : 0.5;
+  const bloomRes = 0.5; // 光のにじみは半分の細かさで十分
   const blooms = [];
   const mkComp = (sc, c) => { const k = new EffectComposer(renderer); k.renderToScreen = false; k.addPass(new RenderPass(sc, c)); const b = new UnrealBloomPass(new THREE.Vector2(W * bloomRes, H * bloomRes), 0.75, 0.65, 0.88); blooms.push(b); k.addPass(b); k.addPass(new OutputPass()); return k; };
   const compD = mkComp(D.scene, cam), compA = mkComp(A.scene, camA);
@@ -174,6 +176,9 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   const lamp = new THREE.SpotLight('#ffd8a0', 9, 7, 0.7, 0.6, 1.0); lamp.position.set(-0.8, 2.2, 1.4); lamp.target.position.set(0, 0, 0); D.scene.add(lamp, lamp.target);
   const fog0 = D.scene.fog ? D.scene.fog.density : 0;
 
+  // 路地の動かない物をまとめる（的になる看板・タワーの画面は別のまま）
+  const mergedA = await mergeStatic(A.scene, { exclude: [...A.stands.map(h => h.parent), A.towerScreen], ups: A.ups });
+
   // ---- 生きもの ----
   const whaleD = await addWhale(D.scene, { length: 0.32, center: [0, 0.93, -0.38], radius: [0.38, 0.15], speed: 0.13, phase0: 2.2 });
   whaleD.group.visible = false;
@@ -184,6 +189,8 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   const counter = counterBoard({ w: 0.085 });
   counter.group.position.set(-0.088, 0.1, 0.43); counter.group.rotation.y = Math.PI / 2 - 0.95; A.scene.add(counter.group);
   A.ups.push(() => counter.update());
+
+  optimizeScene(D.scene, { maxLights: 10 }); optimizeScene(A.scene, { maxLights: 16 });
 
   // ---- 路地での見回し（ドラッグで少しだけ） ----
   const look = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0 };
@@ -205,7 +212,9 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     const mod = kind === 'tools' ? await import('./factorypaper.js') : await import('./lotpaper.js');
     const S = kind === 'tools' ? await mod.buildFactoryPaper({ works: ws, screenCanvas }) : await mod.buildLotPaper({ works: ws, screenCanvas });
     if (S.scene.userData.needsEnv) { pmrem ??= new THREE.PMREMGenerator(renderer); S.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; S.scene.environmentIntensity = 0.35; }
-    const c = new THREE.PerspectiveCamera(56, W / H, 0.005, 30);
+    const c = new THREE.PerspectiveCamera(56, W / H, 0.005, 30); c.layers.enable(DETAIL_LAYER);
+    optimizeScene(S.scene, { maxLights: 12 });
+    await mergeStatic(S.scene, { exclude: [...S.stands.map(h => h.parent), S.towerScreen], ups: S.ups });
     const comp = mkComp(S.scene, c); comp.setSize(W, H);
     const pose = kind === 'tools' ? mod.FACTORY_CAM : mod.LOT_CAM;
     pages[kind] = { S, comp, cam: c, pose, exposure: kind === 'tools' ? 0.8 : 0.78, targets: [...S.stands, S.towerScreen] };
@@ -234,7 +243,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   function contentOf(kind) {
     if (content[kind]) return content[kind];
     const M = kind === 'tools' ? buildFactoryMini() : buildLotMini();
-    D.scene.add(M.group);
+    D.scene.add(M.group); optimizeScene(D.scene, { maxLights: 12 });
     const pb = new Map(M.items.map(o => [o, o.scale.clone()]));
     const del = new Map(M.items.map(o => { const p = o.getWorldPosition(new THREE.Vector3()); return [o, Math.max(0, (p.z + 0.9) * 0.9 + Math.abs(p.x) * 0.6)]; }));
     const dm = Math.max(...del.values(), 1e-3);
@@ -372,12 +381,14 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     return o.userData.workId ? { workId: o.userData.workId } : null;
   }
 
+  const tune = adaptiveResolution({ min: 0.6, max: PR_MAX, start: PR_MAX, apply: pr => { renderer.setPixelRatio(pr); resize(); } });
   let running = !manual, last = performance.now();
   function loop() {
     if (!running) return;
     requestAnimationFrame(loop);
     const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
     renderAt(time + dt, dt);
+    if (!document.hidden) tune(dt);
   }
   if (running) loop(); else renderAt(time);
 
@@ -393,6 +404,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     skip() { if (time < T_ALLEY) time = T_ALLEY; if (turning) turning.skip = true; },
     pick, isTap: (x, y) => tap.up(x, y), onFrame(cb) { frameCbs.push(cb); },
     renderAt,
+    get __scenes() { return { D: D.scene, A: A.scene, ...Object.fromEntries(Object.entries(pages).filter(([k]) => k !== 'games').map(([k, p]) => [k, p.S.scene])) }; },
     // 確認用：物の画面上の位置
     screenOf(o) { const v = o.getWorldPosition(new THREE.Vector3()).project(page === 'games' ? camA : pages[page].cam), r = el.getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; },
     dispose() { running = false; ro.disconnect(); removeEventListener('pointermove', onMove); removeEventListener('pointerup', onUp); removeEventListener('pointercancel', onCancel); renderer.dispose(); },
