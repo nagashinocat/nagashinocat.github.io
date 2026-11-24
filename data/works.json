@@ -1,0 +1,16 @@
+[
+  {"id": "aiaigasa", "title": "while it's raining", "district": "games", "url": "/aiaigasa/", "blurb": "空になって、ちょうどいい雨を降らせ続ける。相合傘が終わらないように。", "color": "#4fd8ff", "isNew": false, "shot": "assets/shots/aiaigasa.jpg"},
+  {"id": "chounouryokusha-no-shoumei", "title": "超能力者の証明", "district": "games", "url": "/chounouryokusha-no-shoumei/", "blurb": "4枚のカードを勘だけで当て続け、全人類に信じさせろ。", "color": "#ff2d55", "shot": "assets/shots/chounouryokusha-no-shoumei.jpg"},
+  {"id": "neko-tasukete", "title": "ちょっと、うちの猫ちゃんを助けてあげて", "district": "games", "url": "/neko-tasukete/", "blurb": "宇宙まで1万段のだるまをリズムで叩いて、てっぺんの猫を助ける。", "color": "#ffb21f", "shot": "assets/shots/neko-tasukete.jpg"},
+  {"id": "senban-enpitsu", "title": "鉛筆削りがなかった僕は、旋盤で削ることにした。", "district": "games", "url": "/senban-enpitsu/", "blurb": "点線にぴったり合わせて、鉛筆を旋盤で削る。", "color": "#7cff6b", "shot": "assets/shots/senban-enpitsu.jpg"},
+  {"id": "whale-watch", "title": "クジラが見てる", "district": "games", "url": "/whale-watch/", "blurb": "クジラの見える海。", "color": "#4f8bff", "shot": "assets/shots/whale-watch.jpg", "cm": "assets/cm/whale-watch.mp4"},
+  {"id": "saigo-no-ichigeki", "title": "最後の一撃", "district": "games", "url": "", "blurb": "手の中の力を溜めて、一発で街ごと軍勢を消し飛ばせ。近日公開。", "color": "#ff4fa3"},
+  {"id": "nankai-sim", "title": "南海トラフ地震シミュレーター", "district": "tools", "url": "/nankai-sim/", "blurb": "南海トラフ地震の揺れと津波をシミュレーションする。", "color": "#ff9a1f"},
+  {"id": "drawing-to-3d", "title": "3D読み込みツール", "district": "tools", "url": "", "blurb": "絵から中身ごと3Dモデルを作る。いつか公開。", "color": "#c8ff4f"},
+  {"id": "saikyou-seibutsu", "title": "ぼくの考えたさいきょうせいぶつ", "district": "wip", "url": "", "blurb": "想像した生き物を絵日記で育てて戦わせる。"},
+  {"id": "obugyou", "title": "皆に代わってお捌きよ‼︎", "district": "wip", "url": "", "blurb": "迷惑な人に、お奉行様がクスッと笑えるお裁きを。"},
+  {"id": "katana-kaji", "title": "3D刀鍛冶", "district": "wip", "url": "", "blurb": "槌で打つ手ざわり。鑑定、銘、そして妖刀。"},
+  {"id": "kuso-ijin", "title": "空想の偉人", "district": "wip", "url": "", "blurb": "空想の偉人のはちゃめちゃな一生を百科事典に。"},
+  {"id": "same-ka", "title": "サメかサメ以外か", "district": "wip", "url": "", "blurb": "サメならモリ、人なら引き上げる。反射で見分けろ。"},
+  {"id": "armadillo", "title": "アルマジロトカゲ飼育", "district": "wip", "url": "", "blurb": "本物の生態を研究して、群れで飼う。"}
+]

@@ -1,0 +1,150 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>本が開いて路地へ（試作）</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Righteous&family=DotGothic16&display=swap">
+<style>html,body{margin:0;height:100%;background:#05030a;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { buildDiorama } from '../js/scene/diorama.js';
+import { buildAlleyPaper } from '../js/scene/alleypaper.js';
+import { addWhale } from '../js/scene/creatures.js';
+try { await Promise.all(['40px "Dela Gothic One"', '40px "Righteous"', '40px "DotGothic16"'].map(f => document.fonts.load(f))); } catch {}
+const Q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.append(renderer.domElement);
+const cam = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.005, 30);
+const D = await buildDiorama();
+const A = await buildAlleyPaper({ entry: 1.5 });
+// 2つの場面をそれぞれ描いて、重ねて溶かす（暗転させない）
+const mkComp = (sc, c) => { const k = new EffectComposer(renderer); k.renderToScreen = false; k.addPass(new RenderPass(sc, c)); k.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.75, 0.65, 0.88)); k.addPass(new OutputPass()); return k; };
+const camA = cam.clone();
+const compD = mkComp(D.scene, cam), compA = mkComp(A.scene, camA);
+const mix = new THREE.ShaderMaterial({ uniforms: { a: { value: null }, b: { value: null }, k: { value: 0 } }, depthTest: false, depthWrite: false,
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
+  // 明るい所（看板やタワー）から先に路地へ溶ける
+  fragmentShader: 'uniform sampler2D a, b; uniform float k; varying vec2 vUv; void main(){ vec4 x = texture2D(a, vUv), y = texture2D(b, vUv); float l = dot(y.rgb, vec3(.3,.59,.11)); float m = smoothstep(0., 1., k + l * 0.6 * k * (1. - k)); gl_FragColor = mix(x, y, m); }' });
+const qScene = new THREE.Scene(), qCam = new THREE.Camera(); qScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mix));
+function out(a, b, k) { mix.uniforms.a.value = a.readBuffer.texture; mix.uniforms.b.value = b.readBuffer.texture; mix.uniforms.k.value = k; renderer.setRenderTarget(null); const tm = renderer.toneMapping; renderer.toneMapping = THREE.NoToneMapping; renderer.render(qScene, qCam); renderer.toneMapping = tm; }
+
+// ---- 閉じた本：左半分（表紙＋左のページ）を背の所で右へ折り重ねておく ----
+const spine = new THREE.Group(); spine.position.set(0, 0.012, 0); D.scene.add(spine);
+for (const o of [D.book.covers[-1], D.book.pages[-1]]) { o.position.y -= 0.012; spine.add(o); }
+// ページのふち（紙の束が見えるように）
+{ const edge = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.03, 1.56), new THREE.MeshStandardMaterial({ color: '#cfc2a6', roughness: 1 })); edge.position.set(0.56, 0.0, 0); edge.visible = false; D.scene.add(edge); spine.userData.edge = edge; }
+const setBook = u => { // u: 0 閉じている → 1 開ききる
+  spine.rotation.z = -Math.PI * (1 - u);
+  spine.userData.edge.visible = u < 0.02;
+};
+
+// ---- 飛び出す準備：本と机と地面以外は、ぜんぶ下から立ち上がる ----
+const fixed = new Set([D.book.desk, D.book.covers[1], D.book.pages[1], spine, spine.userData.edge, D.sides[-1].outer, D.sides[1].outer, ...D.ground]);
+const pops = [];
+for (const sd of [-1, 1]) for (const o of D.sides[sd].inner.children) pops.push(o);
+for (const o of D.scene.children) { if (fixed.has(o) || o.isLight || o.isCamera) continue; pops.push(o); }
+const base = new Map(pops.map(o => [o, o.scale.clone()]));
+// 遅れ：奥・中央から先に、手前・外へ
+const delayOf = o => { const p = new THREE.Vector3(); o.getWorldPosition(p); return Math.max(0, (p.z + 0.9) * 0.9 + Math.abs(p.x) * 0.6); };
+// ゆっくり始まって、だんだん速く：はじめはぽつぽつ、あとからどっと立ち上がる
+const rawD = pops.map(delayOf), dMax = Math.max(...rawD, 1e-3);
+const POP_SPAN = 4.4;
+const delays = new Map(pops.map((o, i) => [o, POP_SPAN * (rawD[i] / dMax) ** 0.5]));
+const durOf = d => 1.4 - 0.9 * (d / POP_SPAN); // 最初の建物は1.4秒、最後は0.5秒で伸びる
+const backOut = x => { const c1 = 1.3, c3 = c1 + 1; return 1 + c3 * (x - 1) ** 3 + c1 * (x - 1) ** 2; };
+// のび方も、ゆっくり持ち上がってから勢いよく（少し行き過ぎて戻る）
+const grow = x => x < 0.5 ? 0.3 * (x / 0.5) ** 2 : 0.3 + 0.7 * backOut((x - 0.5) / 0.5);
+const setPop = t => { for (const o of pops) { const d = delays.get(o); const x = Math.min(1, Math.max(0, (t - d) / durOf(d))); const k = x <= 0 ? 0.0001 : grow(x); const s0 = base.get(o); o.scale.set(s0.x, s0.y * k, s0.z); o.visible = x > 0; } };
+// 地面：本が開いたら、奥からカーペットをコロコロ転がして敷くように手前へ広がる
+const gBase = new Map(D.ground.map(o => [o, { s: o.scale.clone(), z: o.position.z }]));
+const G_LEN = 1.6, G_BACK = -0.8; // 地面の奥の端
+// 巻いた地面（濡れた路面の筋が回って、転がっているのが分かる）
+const rollTex = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 256; const g = c.getContext('2d'); g.fillStyle = '#241a2c'; g.fillRect(0, 0, 64, 256); for (let y = 0; y < 256; y += 32) { g.fillStyle = '#3a2c48'; g.fillRect(0, y, 64, 10); g.fillStyle = 'rgba(255,140,200,0.35)'; g.fillRect(0, y + 12, 64, 2); } const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; })();
+const roll = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 2.2, 32), [new THREE.MeshStandardMaterial({ map: rollTex, roughness: 0.5, emissive: '#3a2850', emissiveMap: rollTex, emissiveIntensity: 1.2 }), new THREE.MeshStandardMaterial({ color: '#4a3a56', roughness: 1 }), new THREE.MeshStandardMaterial({ color: '#4a3a56', roughness: 1 })]);
+roll.rotation.z = Math.PI / 2; D.scene.add(roll);
+const setGround = u => {
+  for (const o of D.ground) { const g = gBase.get(o); o.scale.set(g.s.x, Math.max(1e-4, g.s.y * u), g.s.z); o.position.z = G_BACK + (g.z - G_BACK) * u; o.visible = u > 0; }
+  const rad = 0.01 + 0.04 * (1 - u); // 敷くほど巻きが細くなる
+  roll.visible = u > 0 && u < 1;
+  roll.scale.set(rad, 1, rad); roll.position.set(0, 0.012 + rad, G_BACK + G_LEN * u);
+  roll.rotation.x = -(G_LEN * u) / rad * 0.5; // 転がる
+};
+setPop(-1); setGround(0); setBook(0);
+// クジラ：街が立ち上がったあと、タワーのまわりをゆっくり回る
+const whale = await addWhale(D.scene, { length: 0.32, center: [0, 0.93, -0.38], radius: [0.38, 0.15], speed: 0.13, phase0: 2.2 });
+whale.group.visible = false;
+// 机のスタンドの明かり（最初だけ。街が立ち上がると夜になる）
+const lamp = new THREE.SpotLight('#ffd8a0', 9, 7, 0.7, 0.6, 1.0); lamp.position.set(-0.8, 2.2, 1.4); lamp.target.position.set(0, 0, 0); D.scene.add(lamp, lamp.target);
+const fog0 = D.scene.fog ? D.scene.fog.density : 0;
+
+// ---- カメラの道すじ ----
+const K = [ // [時刻, 位置, 注視点, fov]
+  [0.0, [0.9, 2.4, 2.6], [0, 0, 0], 40],
+  [3.8, [0.3, 1.5, 2.1], [0, 0.1, 0], 44],
+  [8.6, [0, 0.14, 1.12], [0, 0.34, -0.5], 56],
+  [10.2, [0, 0.12, 0.9], [0, 0.32, -0.5], 56],
+  [12.8, [0, 0.065, 0.25], [0, 0.3, -0.72], 60],
+  [15.2, [0, 0.055, -0.32], [0, 0.42, -0.72], 64],
+];
+const ease = t => t * t * (3 - 2 * t);
+const clamp01 = x => Math.min(1, Math.max(0, x));
+const smooth01 = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
+// カメラはキーを通るなめらかな曲線の上を、速さが急に変わらないように動く
+const paths = new Map();
+function pathOf(keys) {
+  if (paths.has(keys)) return paths.get(keys);
+  const V = a => new THREE.Vector3(...a);
+  const pc = new THREE.CatmullRomCurve3(keys.map(k => V(k[1])), false, 'centripetal');
+  const lc = new THREE.CatmullRomCurve3(keys.map(k => V(k[2])), false, 'centripetal');
+  // 時刻→キー番号を、傾きがなめらかにつながる3次で（単調）
+  const T = keys.map(k => k[0]), n = T.length, m = [];
+  const sl = i => 1 / (T[i + 1] - T[i]);
+  for (let i = 0; i < n; i++) m.push(i === 0 ? (keys.moveStart ? sl(0) : 0) : i === n - 1 ? (keys.moveEnd ? sl(n - 2) : 0) : 2 / (1 / sl(i - 1) + 1 / sl(i)));
+  const P = { pc, lc, T, m }; paths.set(keys, P); return P;
+}
+function camAt(c, t, keys) {
+  const { pc, lc, T, m } = pathOf(keys), n = T.length;
+  t = Math.min(T[n - 1], Math.max(0, t));
+  let i = 0; while (i < n - 2 && t > T[i + 1]) i++;
+  const h = T[i + 1] - T[i], x = (t - T[i]) / h;
+  const h00 = 2 * x ** 3 - 3 * x ** 2 + 1, h10 = x ** 3 - 2 * x ** 2 + x, h01 = -2 * x ** 3 + 3 * x ** 2, h11 = x ** 3 - x ** 2;
+  const idx = h00 * i + h10 * h * m[i] + h01 * (i + 1) + h11 * h * m[i + 1];
+  const u = Math.min(1, Math.max(0, idx / (n - 1)));
+  c.position.copy(pc.getPoint(u)); c.lookAt(lc.getPoint(u));
+  const fi = Math.min(n - 2, Math.floor(idx)), fr = idx - fi; c.fov = keys[fi][3] + (keys[fi + 1][3] - keys[fi][3]) * fr;
+  c.aspect = innerWidth / innerHeight; c.updateProjectionMatrix();
+}
+// 路地：大通りの続きとして、タワーを見たまま前へ進み続ける
+const KA = [
+  [0, [0, 0.06, 1.38], [0, 0.42, -1.05], 64],
+  [2.0, [0, 0.055, 1.0], [0, 0.34, -1.0], 61],
+  [4.6, [-0.01, 0.045, 0.66], [0.03, 0.3, -0.9], 58],
+];
+K.moveEnd = true; KA.moveStart = true; // つなぎ目で止まらない
+const T_X = 13.6, X_DUR = 1.6; // 大通りと路地が溶け合う時間
+function frame(t) {
+  const oc = clamp01((t - 0.8) / 3.2); // 閉じた本がゆっくり開く
+  setBook(oc < 0.5 ? 4 * oc ** 3 : 1 - (-2 * oc + 2) ** 3 / 2);
+  setGround(1 - (1 - clamp01((t - 3.6) / 2.2)) ** 2);
+  setPop(t - 4.2);
+  lamp.intensity = 9 * (1 - ease(clamp01((t - 4.8) / 3.2)));
+  if (D.scene.fog) D.scene.fog.density = fog0 * (0.25 + 0.75 * ease(clamp01((t - 3.0) / 4.0))); // はじめは霧を薄く、本がよく見えるように
+  const k = clamp01((t - T_X) / X_DUR);
+  if (k < 1) { camAt(cam, Math.min(t, K.at(-1)[0]), K); for (const u of D.ups) u && u(t, 1 / 60); whale.update(t); const wv = smooth01((t - 8.0) / 1.8); whale.group.visible = wv > 0; whale.group.scale.setScalar(Math.max(1e-3, wv)); }
+  if (k > 0) { camAt(camA, t - T_X, KA); for (const u of A.ups) u && u(t); }
+  if (k < 1) { renderer.toneMappingExposure = 0.8; compD.render(); }
+  if (k > 0) { renderer.toneMappingExposure = 0.72; compA.render(); }
+  out(k < 1 ? compD : compA, k > 0 ? compA : compD, ease(k));
+}
+if (Q.has('manual')) { window.__frame = frame; document.title = 'ready'; }
+else if (Q.has('t')) { frame(+Q.get('t')); document.title = 'ready'; }
+else {
+  const t0 = performance.now();
+  const loop = () => { frame((performance.now() - t0) / 1000); requestAnimationFrame(loop); };
+  loop(); document.title = 'ready';
+}
+</script></body></html>

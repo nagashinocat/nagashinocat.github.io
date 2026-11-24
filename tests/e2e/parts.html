@@ -1,0 +1,21 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>parts</title><style>html,body{margin:0;height:100%;background:#2a1a3a}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script></head><body>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { toonMaterial, outlineMaterial } from '../../js/scene/toon.js';
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(innerWidth, innerHeight); document.body.append(r.domElement);
+const s = new THREE.Scene(); s.background = new THREE.Color('#2a1a3a');
+const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 100); cam.position.set(0, 0.8, 5.2); cam.lookAt(0, 0.5, 0);
+const L = new GLTFLoader(); L.setMeshoptDecoder(MeshoptDecoder);
+const view = new URLSearchParams(location.search).get('v') || 'front';
+for (let k = 0; k < 7; k++) {
+  const g = await L.loadAsync(`../../assets/models/kowloon-${k}.glb`);
+  const ms = []; g.scene.traverse(o => o.isMesh && ms.push(o)); for (const o of ms) { o.material = toonMaterial({ seed: k }); o.add(new THREE.Mesh(o.geometry, outlineMaterial(0.004))); }
+  g.scene.position.x = (k - 3) * 1.15;
+  if (view === 'back') g.scene.rotation.y = Math.PI;
+  s.add(g.scene);
+}
+r.render(s, cam); document.title = 'ready';
+</script></body></html>
