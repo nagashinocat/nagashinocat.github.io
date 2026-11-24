@@ -53,6 +53,8 @@ async function startCity(works) {
   const selection = createSelection(billboard, { navigate: url => { location.href = url; } });
   const hub = { world, billboard, selection, works, screen, ready: false, selected: null, videoReady: false };
   window.__hub = hub;
+  // 訪問者を数えて、路地のカウンターに出す
+  import('./counter.js').then(m => m.visit()).then(n => world.setVisitors(n)).catch(() => {});
   if (manual) { window.__frame = t => world.renderAt(t); document.title = 'ready'; } // 撮影・確認用
 
   // 選ばれた看板は明るく脈打つ

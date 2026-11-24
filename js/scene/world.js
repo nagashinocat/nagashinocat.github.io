@@ -9,6 +9,7 @@ import { buildAlleyPaper } from './alleypaper.js';
 import { addCat, addWhale } from './creatures.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildFactoryMini, buildLotMini } from './minidiorama.js';
+import { counterBoard } from './counterboard.js';
 import { createTapGuard } from '../util.js';
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
@@ -178,6 +179,11 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   whaleD.group.visible = false;
   const cat = await addCat(A.scene, { height: 0.045, area: { x: [-0.06, 0.06], z: [-0.4, 0.34] }, seed: (Math.random() * 1e6) | 0 });
   const whale = await addWhale(A.scene, { length: 0.34, center: [0.01, 0.62, -0.58], radius: [0.06, 0.42], speed: 0.07 });
+
+  // 訪問者カウンター：路地の左の壁、手前の店の上
+  const counter = counterBoard({ w: 0.085 });
+  counter.group.position.set(-0.088, 0.1, 0.43); counter.group.rotation.y = Math.PI / 2 - 0.95; A.scene.add(counter.group);
+  A.ups.push(() => counter.update());
 
   // ---- 路地での見回し（ドラッグで少しだけ） ----
   const look = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0 };
@@ -381,6 +387,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     get stands() { return Object.values(pages).flatMap(p => p.S.stands); },
     get screenTex() { return pages[page].S.screenTex; },
     turnTo,
+    setVisitors(n) { counter.set(n); },
     get time() { return time; },
     get inAlley() { return time >= T_ALLEY; },
     skip() { if (time < T_ALLEY) time = T_ALLEY; if (turning) turning.skip = true; },

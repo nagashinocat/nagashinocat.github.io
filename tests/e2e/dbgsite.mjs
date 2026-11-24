@@ -13,6 +13,7 @@ await p.screenshot({ path: 'tests/out/site-a.png' });
 for (let t = 15.2; t < 19.8; t += 0.5) await p.evaluate(t => window.__hub.world.renderAt(t, 0.5), t);
 await p.waitForFunction(() => window.__hub.ready, null, { timeout: 10000 });
 await p.screenshot({ path: 'tests/out/site-b.png' });
+await p.evaluate(() => window.__hub.world.setVisitors(1234)); for (let t = 20; t < 22; t += 0.5) await p.evaluate(t => window.__hub.world.renderAt(t, 0.5), t); await p.waitForTimeout(1800); await p.evaluate(() => window.__hub.world.renderAt(22.5, 0.5)); await p.screenshot({ path: 'tests/out/site-b.png' });
 console.log(await p.evaluate(() => { const c = window.__hub.screen, d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i]; return 'screen sum ' + s + ' state ' + JSON.stringify(window.__hub.billboard.state()); }));
 for (let t = 20; t < 26; t += 0.5) await p.evaluate(t => window.__hub.world.renderAt(t, 0.5), t);
 await p.screenshot({ path: 'tests/out/site-c.png' });

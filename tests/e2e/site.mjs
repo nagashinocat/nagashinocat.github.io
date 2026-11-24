@@ -79,8 +79,10 @@ async function runSite(ctx) {
       assert(!(await page.isHidden('#play')), 'あそぶボタンが出ない');
     });
 
-    await check(`site ${name}: めくりボタンで第3工場へ`, async () => {
+    await check(`site ${name}: めくりボタンで第3工場へ（めくりはスキップできる）`, async () => {
       await page.click('#next');
+      await page.waitForSelector('#skip:not([hidden])', { timeout: 60000 });
+      await page.click('#skip');
       await page.waitForFunction(() => window.__hub.world.page === 'tools' && !window.__hub.world.busy, null, { timeout: 240000 });
       const label = await page.textContent('#district-name');
       assert(label.includes('工場'), label);
