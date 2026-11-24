@@ -86,6 +86,36 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
     fragmentShader: 'uniform sampler2D a, b; uniform float k; varying vec2 vUv; void main(){ vec4 x = texture2D(a, vUv), y = texture2D(b, vUv); float l = dot(y.rgb, vec3(.3,.59,.11)); float m = smoothstep(0., 1., k + l * 0.6 * k * (1. - k)); gl_FragColor = mix(x, y, m); }' });
   const qScene = new THREE.Scene(), qCam = new THREE.Camera(); qScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mix));
+  // ページめくり：古いページが右下の角からめくれて、下の新しいページが現れる（紙の裏は生成り色）
+  const curl = new THREE.ShaderMaterial({ uniforms: { a: { value: null }, b: { value: null }, k: { value: 0 }, asp: { value: 1 } }, depthTest: false, depthWrite: false,
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
+    fragmentShader: `uniform sampler2D a, b; uniform float k, asp; varying vec2 vUv;
+      const float PI = 3.14159265;
+      bool inside(vec2 q){ return q.x >= 0. && q.x <= asp && q.y >= 0. && q.y <= 1.; }
+      vec4 tA(vec2 q){ return texture2D(a, vec2(q.x / asp, q.y)); }
+      void main(){
+        vec2 p = vec2(vUv.x * asp, vUv.y);
+        vec2 n = normalize(vec2(1., 0.42));
+        float R = 0.09 + 0.05 * sin(k * PI);
+        vec2 P = vec2(asp, 0.) + n * (0.35 - k * (asp + 1.6));
+        float s = dot(p - P, n);
+        vec4 col; bool done = false;
+        vec3 backC = vec3(0.93, 0.88, 0.78);
+        // 1) 折り返して上に重なった裏面（平ら）
+        if (s < 0.) { float d = PI * R - s; vec2 src = p + n * (d - s); if (inside(src)) { vec4 m = tA(vec2(asp - src.x, src.y) * vec2(1., 1.)); col = vec4(mix(backC, m.rgb * 0.5 + backC * 0.5, 0.18) * (0.82 + 0.18 * clamp(-s / 0.3, 0., 1.)), 1.); done = true; } }
+        // 2) 筒の上側（裏面）
+        if (!done && s >= 0. && s < R) { float d = R * (PI - asin(s / R)); vec2 src = p + n * (d - s); if (inside(src)) { float sh = 0.55 + 0.45 * sqrt(1. - s / R); col = vec4(backC * sh, 1.); done = true; } }
+        // 3) 筒の下側（表面）
+        if (!done && s >= 0. && s < R) { float d = R * asin(s / R); vec2 src = p + n * (d - s); if (inside(src)) { float sh = 1. - 0.6 * (s / R) * (s / R); col = vec4(tA(src).rgb * sh, 1.); done = true; } }
+        // 4) まだめくれていない所は古いページ、めくれた所は新しいページ（折り目の影つき）
+        if (!done) {
+          if (s < 0.) col = tA(p);
+          else { float shadow = 1. - 0.55 * exp(-(s - R) * 14.); col = vec4(texture2D(b, vUv).rgb * shadow, 1.); }
+        }
+        gl_FragColor = col;
+      }` });
+  const cScene = new THREE.Scene(); cScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), curl));
+  function outCurl(a, b, k) { curl.uniforms.a.value = a.readBuffer.texture; curl.uniforms.b.value = b.readBuffer.texture; curl.uniforms.k.value = k; curl.uniforms.asp.value = W / H; renderer.setRenderTarget(null); const tm = renderer.toneMapping; renderer.toneMapping = THREE.NoToneMapping; renderer.render(cScene, qCam); renderer.toneMapping = tm; }
   function out(a, b, k) { mix.uniforms.a.value = a.readBuffer.texture; mix.uniforms.b.value = b.readBuffer.texture; mix.uniforms.k.value = k; renderer.setRenderTarget(null); const tm = renderer.toneMapping; renderer.toneMapping = THREE.NoToneMapping; renderer.render(qScene, qCam); renderer.toneMapping = tm; }
 
   // ---- 閉じた本：左半分（表紙＋左のページ）を背の所で右へ折り重ねておく ----
@@ -174,7 +204,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     return pages[kind];
   }
   let page = 'games', turning = null; // turning: { from, to, t0 }
-  const TURN = 1.3;
+  const TURN = 1.6;
   const poseCam = (P, push, aspect) => {
     const c = P.cam, { pos, look, fov } = P.pose;
     const fwd = new THREE.Vector3(...look).sub(new THREE.Vector3(...pos)).normalize();
@@ -182,7 +212,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   };
   async function turnTo(kind) {
     if (turning || kind === page || !PAGES.includes(kind) || time < T_ALLEY) return page;
-    turning = { from: page, to: kind, t0: null };
+    turning = { from: page, to: kind, t0: null, dir: PAGES.indexOf(kind) > PAGES.indexOf(page) ? 1 : -1 };
     try { await buildPage(kind); } catch (e) { turning = null; throw e; }
     turning.t0 = time;
     await new Promise(ok => { turning.done = ok; });
@@ -221,8 +251,9 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     const drawPage = (kind, push) => { const P = pages[kind]; if (kind !== 'games') { poseCam(P, push, aspect2); lookQ(P.cam.quaternion); for (const u of P.S.ups) u && u(t); } else if (push) camA.position.addScaledVector(camA.getWorldDirection(new THREE.Vector3()), push); renderer.toneMappingExposure = P.exposure; P.comp.render(); return P.comp; };
     if (turning && turning.t0 != null) {
       const u = clamp01((t - turning.t0) / TURN), e = ease(u);
-      const a = drawPage(turning.from, e * 0.25), b = drawPage(turning.to, -(1 - e) * 0.25);
-      out(a, b, e);
+      const a = drawPage(turning.from, 0), b = drawPage(turning.to, 0);
+      // 次へ：今のページが右下からめくれる。前へ：前のページが左から戻ってきて重なる
+      if (turning.dir > 0) outCurl(a, b, e); else outCurl(b, a, 1 - e);
       if (u >= 1) { page = turning.to; const done = turning.done; turning = null; done && done(); }
       return;
     }

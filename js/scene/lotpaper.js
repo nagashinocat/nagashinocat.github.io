@@ -2,6 +2,7 @@
 // 遠くにネオンの高層ビル、夕暮れの紫の空。建物は紙、光と水たまりは本物の光で
 import * as THREE from 'three';
 import { boardSign } from './signs.js';
+import { paperBuildingDetailed, paperAntenna, paperTank } from './paper.js';
 import { glowTex } from './parts.js';
 import { rng } from '../rng.js';
 import { orderForStands } from '../layout.js';
@@ -158,7 +159,7 @@ export async function buildLotPaper({ seed = 33, works = null, screenCanvas = nu
   scene.background = skyT;
   // 水たまりや金属に映る空（夕焼けの色）
   const env = tx(skyC); env.mapping = THREE.EquirectangularReflectionMapping; scene.environment = env; scene.environmentIntensity = 0.6;
-  scene.fog = new THREE.FogExp2('#3a2448', 0.38);
+  scene.fog = new THREE.FogExp2('#3a2448', 0.24);
   scene.add(new THREE.HemisphereLight('#a070c0', '#2a1a20', 0.55));
   const dusk = new THREE.DirectionalLight('#ff9ac0', 0.4); dusk.position.set(0.3, 0.6, -2); scene.add(dusk);
 
@@ -174,6 +175,38 @@ export async function buildLotPaper({ seed = 33, works = null, screenCanvas = nu
   // 遠くのネオンの街（板）
   const skyline = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.75), new THREE.MeshBasicMaterial({ map: skylineTex(r), transparent: true, fog: false, toneMapped: false }));
   skyline.position.set(0, 0.62, -3.2); scene.add(skyline);
+
+  // ---- 奥に見える九龍城：箱を積み重ねた巨大なかたまり。窓の明かりと、屋上のアンテナ、ネオン ----
+  {
+    const kw = new THREE.Group();
+    const X0 = -1.7, X1 = 0.45, Z0 = -1.45, Z1 = -2.1;
+    for (let x = X0; x < X1;) {
+      const w = r.range(0.1, 0.2);
+      for (let z = Z0; z > Z1;) {
+        const d = r.range(0.1, 0.18);
+        // 真ん中ほど高く、ふちはぎざぎざ
+        const c = 1 - Math.abs((x - (X0 + X1) / 2) / ((X1 - X0) / 2));
+        const h = 0.38 + c * 0.6 + r.range(-0.1, 0.14) + (Z0 - z) * 0.25;
+        const b = paperBuildingDetailed(w * 0.98, h, d * 0.98, r, { cheap: true, bare: true });
+        b.position.set(x + w / 2, 0, z - d / 2); kw.add(b);
+        if (r.next() < 0.35) { const a = paperAntenna(r); a.scale.setScalar(1.6); a.position.set(x + w * r.next(), h, z - d / 2); kw.add(a); }
+        if (r.next() < 0.15) { const t = paperTank(r); t.scale.setScalar(1.4); t.position.set(x + w / 2, h, z - d / 2); kw.add(t); }
+        z -= d;
+      }
+      x += w;
+    }
+    // はみ出したベランダ・看板のネオン（文字なしの光の板）
+    const neonCols = ['#ff5fd2', '#5fe8ff', '#ffd84f', '#8a7aff', '#ff6a3a'];
+    for (let i = 0; i < 22; i++) {
+      const col = r.pick(neonCols), w = r.range(0.012, 0.03), h = r.range(0.01, 0.04);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col, toneMapped: false, transparent: true, opacity: 0.85 }));
+      m.position.set(r.range(X0 + 0.05, X1 - 0.05), r.range(0.25, 0.75), Z0 + 0.012); kw.add(m);
+    }
+    // 窓の明かりがもれる霞
+    const haze = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: '#ff8ac8', transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false })); haze.scale.set(2.2, 0.6, 1); haze.position.set((X0 + X1) / 2, 0.35, Z0 + 0.05); kw.add(haze);
+    const L = new THREE.PointLight('#ff9ad0', 0.6, 1.4, 1.6); L.position.set((X0 + X1) / 2, 0.4, Z0 + 0.3); kw.add(L);
+    scene.add(kw);
+  }
 
   // ---- 奥と左の壁、金網 ----
   const wallM = paper(graffitiWall(3.2, 0.22, r));
@@ -205,7 +238,7 @@ export async function buildLotPaper({ seed = 33, works = null, screenCanvas = nu
     const br = (x, y, a, l, w, d) => { if (d > 7 || l < 6) return; const x2 = x + Math.cos(a) * l, y2 = y - Math.sin(a) * l; g.lineWidth = w; g.beginPath(); g.moveTo(x, y); g.lineTo(x2, y2); g.stroke(); br(x2, y2, a + 0.3 + r.next() * 0.4, l * 0.72, w * 0.7, d + 1); br(x2, y2, a - 0.3 - r.next() * 0.4, l * 0.7, w * 0.7, d + 1); };
     br(256, 512, Math.PI / 2, 150, 22, 0);
     const tree = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ map: tx(c), transparent: true, alphaTest: 0.3, color: '#1a1020' }));
-    tree.position.set(-1.0, 0.62, -1.35); scene.add(tree);
+    tree.position.set(-1.25, 0.55, -1.3); scene.add(tree);
   }
 
   // ---- 大きな丸い縦穴 ----

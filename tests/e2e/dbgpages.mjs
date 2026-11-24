@@ -12,10 +12,10 @@ await p.waitForFunction(() => window.__hub?.world);
 let T = 19.5; const step = async (n, dt = 0.25) => { for (let i = 0; i < n; i++) { T += dt; await p.evaluate(t => window.__hub.world.renderAt(t, 0.25), T); } };
 await step(1); await p.waitForFunction(() => window.__hub.ready);
 await step(2); await p.screenshot({ path: 'tests/out/pg-0.png' });
-for (const [i, k] of [[1, 'tools'], [2, 'wip']]) {
+for (const [i, k] of [[1, 'tools']]) {
   await p.click('#next');
   await p.waitForFunction(k => window.__hub.world.busy || window.__hub.world.page === k, k);
-  await step(3); await p.screenshot({ path: `tests/out/pg-${i}a.png` });
+  await step(3); await p.screenshot({ path: `tests/out/pg-${i}a.png` }); await step(1); await p.screenshot({ path: `tests/out/pg-${i}b.png` });
   while (await p.evaluate(() => window.__hub.world.busy)) await step(1);
   await step(2); await p.screenshot({ path: `tests/out/pg-${i}.png` });
   const st = await p.evaluate(() => { const w = window.__hub.world, h = w.stands.find(s => s.parent && window.__hub.world.page && s.visible !== false && w.screenOf(s)[0] > 0 && w.screenOf(s)[0] < innerWidth && w.screenOf(s)[1] > 0 && w.screenOf(s)[1] < innerHeight); return h ? [h.userData.workId, ...w.screenOf(h)] : null; });
