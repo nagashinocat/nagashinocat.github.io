@@ -28,7 +28,7 @@ function skyCanvas(r) {
   for (let i = 0; i < 120; i++) { g.fillStyle = `rgba(255,255,255,${r.next() * 0.8})`; g.fillRect(r.next() * 2048, r.next() * 300, 1.5, 1.5); }
   return c;
 }
-function skylineTex(r) {
+export function skylineTex(r) {
   const c = cv(2048, 512), g = c.getContext('2d');
   g.clearRect(0, 0, 2048, 512);
   const layer = (n, hMin, hMax, col, lit) => {
@@ -78,14 +78,14 @@ function groundCanvas(Wm, Lm, r, z0 = 0) {
   return c;
 }
 // 金網（ひし形の網、錆）
-function fenceTex() {
+export function fenceTex() {
   const c = cv(256, 256), g = c.getContext('2d');
   g.strokeStyle = 'rgba(70,60,60,0.95)'; g.lineWidth = 2.4;
   for (let k = -256; k < 512; k += 22) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k + 256, 256); g.stroke(); g.beginPath(); g.moveTo(k, 256); g.lineTo(k + 256, 0); g.stroke(); }
   const t = tx(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
 }
 // 落書きの壁（字は 猫 / ながしの猫 / nagashinocat だけ）
-function graffitiWall(Wm, Hm, r) {
+export function graffitiWall(Wm, Hm, r) {
   const ppu = 700, W = Math.min(2048, Math.round(Wm * ppu)), H = Math.round(Hm * ppu);
   const c = cv(W, H), g = c.getContext('2d');
   g.fillStyle = '#5a5660'; g.fillRect(0, 0, W, H);

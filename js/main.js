@@ -125,7 +125,7 @@ async function startCity(works) {
   });
   el.addEventListener('pointerup', e => {
     if (!world.isTap(e.clientX, e.clientY)) return; // ドラッグは選択にしない
-    if (!world.inAlley) { skipIntro(); return; }       // 本が開いている途中のタップは早送り
+    if (!world.inAlley || world.busy) { skipIntro(); return; } // 本が開いている・めくっている途中のタップは早送り
     const hit = world.pick(e.clientX, e.clientY);
     if (hit?.cat) { world.cat.tap(world.time); return; }
     if (hit?.whale) { world.whale.tap(world.time); return; }
@@ -159,7 +159,9 @@ async function startCity(works) {
     if (!k || world.busy) return;
     billboard.clear(); selection.hover(null);
     $('prev').disabled = $('next').disabled = true;
+    hint.hidden = true; skip.hidden = false; // めくりの途中も飛ばせる
     try { await world.turnTo(k); } catch (e) { console.warn(e); }
+    skip.hidden = true; hint.hidden = false;
     showPage(world.page);
   }
   $('prev').addEventListener('click', () => turn(-1));

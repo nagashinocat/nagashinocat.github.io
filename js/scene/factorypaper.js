@@ -20,7 +20,7 @@ function edged(mesh, ang = 30) { mesh.add(new THREE.LineSegments(new THREE.Edges
 
 // ---------- 印刷する絵 ----------
 // 錆びてはがれた白いトタン壁（窓の列つき）
-function rustWall(Wm, Hm, r, { windows = [], label = null, ppu = 760 } = {}) {
+export function rustWall(Wm, Hm, r, { windows = [], label = null, ppu = 760 } = {}) {
   const W = Math.min(2048, Math.round(Wm * ppu)), H = Math.min(2048, Math.round(Hm * ppu)), s = W / Wm;
   const c = cv(W, H), g = c.getContext('2d');
   g.fillStyle = '#5a3424'; g.fillRect(0, 0, W, H);              // 下地の錆

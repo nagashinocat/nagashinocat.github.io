@@ -10,9 +10,9 @@ p.on('pageerror', e => console.log('ERR', e.message));
 await routeThree(p); await p.goto(srv.url + '/?manual');
 await p.waitForFunction(() => window.__hub?.world);
 let T = 19.5, n = 0;
-const shot = async () => { T += 1 / 30; await p.evaluate(t => window.__hub.world.renderAt(t, 1 / 30), T); await p.screenshot({ path: `tests/out/turn/f${String(n++).padStart(4, '0')}.png` }); };
+const FPS = +(process.argv[3] || 30); const shot = async () => { T += 1 / FPS; await p.evaluate(t => window.__hub.world.renderAt(t, 1 / 30), T); await p.screenshot({ path: `tests/out/turn/f${String(n++).padStart(4, '0')}.png` }); };
 await p.evaluate(t => window.__hub.world.renderAt(t, 0.1), T); await p.waitForFunction(() => window.__hub.ready);
-for (const btn of ['#next', '#next', '#prev']) {
+for (const btn of (process.argv[2] || '#next').split(',')) {
   // 先にページを作っておく（読み込みの待ち時間は撮らない）
   for (let i = 0; i < 15; i++) await shot();
   await p.click(btn);

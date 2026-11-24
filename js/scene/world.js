@@ -8,6 +8,7 @@ import { buildDiorama } from './diorama.js';
 import { buildAlleyPaper } from './alleypaper.js';
 import { addCat, addWhale } from './creatures.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { buildFactoryMini, buildLotMini } from './minidiorama.js';
 import { createTapGuard } from '../util.js';
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
@@ -119,13 +120,14 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   function out(a, b, k) { mix.uniforms.a.value = a.readBuffer.texture; mix.uniforms.b.value = b.readBuffer.texture; mix.uniforms.k.value = k; renderer.setRenderTarget(null); const tm = renderer.toneMapping; renderer.toneMapping = THREE.NoToneMapping; renderer.render(qScene, qCam); renderer.toneMapping = tm; }
 
   // ---- 閉じた本：左半分（表紙＋左のページ）を背の所で右へ折り重ねておく ----
-  const spine = new THREE.Group(); spine.position.set(0, 0.012, 0); D.scene.add(spine);
-  for (const o of [D.book.covers[-1], D.book.pages[-1]]) { o.position.y -= 0.012; spine.add(o); }
+  const SPY = 0.0052; // 閉じたとき、左右のページの面どうしが重なる高さ
+  const spine = new THREE.Group(); spine.position.set(0, SPY, 0); D.scene.add(spine);
+  for (const o of [D.book.covers[-1], D.book.pages[-1]]) { o.position.y -= SPY; spine.add(o); }
   const edge = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.03, 1.56), new THREE.MeshStandardMaterial({ color: '#cfc2a6', roughness: 1 })); edge.position.set(0.56, 0, 0); edge.visible = false; D.scene.add(edge);
-  const setBook = u => { spine.rotation.z = -Math.PI * (1 - u); edge.visible = u < 0.02; };
+  const setBook = u => { spine.rotation.z = -Math.PI * (1 - u); edge.visible = false; };
 
   // ---- 飛び出す準備：本と机と地面以外は、ぜんぶ下から立ち上がる ----
-  const fixed = new Set([D.book.desk, D.book.covers[1], D.book.pages[1], spine, edge, D.sides[-1].outer, D.sides[1].outer, ...D.ground]);
+  const fixed = new Set([D.book.desk, D.book.spine, D.book.covers[1], D.book.pages[1], spine, edge, D.sides[-1].outer, D.sides[1].outer, ...D.ground]);
   const pops = [];
   for (const sd of [-1, 1]) for (const o of D.sides[sd].inner.children) pops.push(o);
   for (const o of D.scene.children) { if (fixed.has(o) || o.isLight || o.isCamera) continue; pops.push(o); }
@@ -160,7 +162,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     const laid = G_LEN * u, rest = G_LEN - laid, r = radOf(rest);
     for (const o of D.ground) { const g = gBase.get(o); o.scale.set(g.s.x, Math.max(1e-4, g.s.y * u), g.s.z); o.position.z = G_BACK + (g.z - G_BACK) * u; o.visible = u > 0; }
     slab.visible = u > 0; slab.scale.z = Math.max(1e-4, laid); slab.position.set(0, PAGE_TOP + TH / 2, G_BACK + laid / 2);
-    rollG.visible = u < 1;
+    rollG.visible = u > 0.002 && u < 1;
     // 転がった角度：ds/r を積分した形（巻きがほどけるほど速く回る）
     const ang = (2 / B) * (radOf(G_LEN) - r);
     const bump = Math.abs(Math.sin(ang * 0.5)) * 0.004 * (1 - u); // ごとごと
@@ -210,25 +212,98 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     const fwd = new THREE.Vector3(...look).sub(new THREE.Vector3(...pos)).normalize();
     c.position.set(...pos).addScaledVector(fwd, push); c.lookAt(...look); c.fov = aspect < 1 ? Math.min(95, fov * (1 + (1 - aspect) * 0.55)) : fov; c.aspect = aspect; c.updateProjectionMatrix();
   };
+  // ---- ページ移動：街から本の見開きへ引いて、中身が沈み、ページがめくれ、次の街が立ち上がって、また入っていく ----
+  const TT = 8.4; // めくりの全体の長さ（秒）
+  const TK = [
+    [0, [0, 0.06, 0.3], [0, 0.3, -0.72], 60],
+    [1.6, [0, 0.14, 1.12], [0, 0.34, -0.5], 56],
+    [3.0, [0.3, 1.5, 2.1], [0, 0.1, 0], 44],
+    [5.6, [0.3, 1.5, 2.1], [0, 0.1, 0], 44],
+    [7.2, [0, 0.14, 1.12], [0, 0.34, -0.5], 56],
+    [8.4, [0, 0.06, 0.3], [0, 0.3, -0.72], 60],
+  ];
+  // 見開きの中身：路地の街（最初のジオラマ）と、工場街・空き地の小さなジオラマ
+  const groundTex0 = D.ground.top.material.map;
+  const content = { games: { set: v => { setPop(v * 5.8); }, ground: groundTex0, ave: true, whale: true } };
+  function contentOf(kind) {
+    if (content[kind]) return content[kind];
+    const M = kind === 'tools' ? buildFactoryMini() : buildLotMini();
+    D.scene.add(M.group);
+    const pb = new Map(M.items.map(o => [o, o.scale.clone()]));
+    const del = new Map(M.items.map(o => { const p = o.getWorldPosition(new THREE.Vector3()); return [o, Math.max(0, (p.z + 0.9) * 0.9 + Math.abs(p.x) * 0.6)]; }));
+    const dm = Math.max(...del.values(), 1e-3);
+    const set = v => { // v: 0 しまった → 1 立ちきった
+      const t = v * 2.6;
+      for (const o of M.items) { const d = 1.6 * (del.get(o) / dm) ** 0.5, x = clamp01((t - d) / (1.0 - 0.5 * d / 1.6)), k = x <= 0 ? 1e-4 : grow(x), s0 = pb.get(o); o.scale.set(s0.x, s0.y * k, s0.z); o.visible = x > 0; }
+      M.group.visible = v > 0;
+    };
+    set(0);
+    return (content[kind] = { set, ground: M.groundTex, ave: false, whale: false, ups: M.ups });
+  }
+  // めくれる紙：背を軸に、先が少し遅れてしなりながら反対側へ
+  const sheetGeo = new THREE.PlaneGeometry(1.1, 1.56, 30, 1);
+  const sheetM = new THREE.MeshStandardMaterial({ color: '#e8dcc0', roughness: 1, side: THREE.DoubleSide });
+  const sheet = new THREE.Mesh(sheetGeo, sheetM); sheet.visible = false; D.scene.add(sheet);
+  const sheetBase = sheetGeo.attributes.position.array.slice();
+  function setSheet(f, dir) { // f: 0..1
+    sheet.visible = f > 0 && f < 1;
+    if (!sheet.visible) return;
+    const th = dir > 0 ? Math.PI * f : Math.PI * (1 - f);       // 0=右に寝ている、π=左に寝ている
+    const L = 1.1, kap = -(dir > 0 ? 1 : -1) * 1.6 * Math.sin(Math.PI * f) / L; // しなり
+    const pos = sheetGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const u = sheetBase[i * 3] + L / 2, z = sheetBase[i * 3 + 1];
+      let x, y; if (Math.abs(kap) < 1e-4) { x = Math.cos(th) * u; y = Math.sin(th) * u; } else { x = (Math.sin(th + kap * u) - Math.sin(th)) / kap; y = -(Math.cos(th + kap * u) - Math.cos(th)) / kap; }
+      pos.setXYZ(i, x, Math.max(0, y) + 0.0065, -z);
+    }
+    pos.needsUpdate = true; sheetGeo.computeVertexNormals();
+  }
+  function bookTurnFrame(tt, from, to, dir) {
+    const aspect = W / H;
+    camAt(cam, tt, TK, aspect);
+    const flip = clamp01((tt - 2.6) / 1.4), swapped = flip >= 0.5;
+    const A0 = contentOf(from), B0 = contentOf(to);
+    // 古い中身が沈み、地面が巻き戻る → めくる → 新しい地面が転がり、中身が立ち上がる
+    if (!swapped) { A0.set(1 - smooth01((tt - 1.2) / 1.2)); B0.set(0); setGround(1 - smooth01((tt - 1.3) / 1.2)); }
+    else { A0.set(0); B0.set(smooth01((tt - 4.4) / 2.8)); setGround(smooth01((tt - 4.0) / 1.8)); }
+    const cur = swapped ? B0 : A0;
+    D.ground.top.material.map = cur.ground; D.ground.ave.visible = cur.ave;
+    for (const o of Object.values(content)) if (o.ups && o.group?.visible !== false) for (const u of o.ups) u(time);
+    whaleD.group.visible = cur.whale && (swapped ? tt > 6.2 : tt < 1.6);
+    setSheet(flip, dir);
+    // 本を見ているあいだは、机のスタンドをまた灯して霧を薄く（本と街がよく見えるように）
+    const bell = smooth01((tt - 1.2) / 1.2) * (1 - smooth01((tt - 5.6) / 1.4));
+    lamp.intensity = 6 * bell;
+    if (D.scene.fog) D.scene.fog.density = fog0 * (1 - 0.65 * bell);
+    for (const u of D.ups) u && u(time, 1 / 60);
+    if (whaleD.group.visible) whaleD.update(time);
+    for (const k of Object.keys(content)) if (k !== from && k !== to) content[k].set(0);
+  }
+
   async function turnTo(kind) {
     if (turning || kind === page || !PAGES.includes(kind) || time < T_ALLEY) return page;
     turning = { from: page, to: kind, t0: null, dir: PAGES.indexOf(kind) > PAGES.indexOf(page) ? 1 : -1 };
     try { await buildPage(kind); } catch (e) { turning = null; throw e; }
+    contentOf(turning.from); contentOf(kind);
     turning.t0 = time;
     await new Promise(ok => { turning.done = ok; });
     return page;
   }
 
   // ---- 時間と描画 ----
-  let time = reducedMotion ? T_ALLEY : 0;
+  let time = reducedMotion ? T_ALLEY : 0, introDone = false;
   const frameCbs = [];
   const yawQ = new THREE.Quaternion(), pitchQ = new THREE.Quaternion();
   function renderAt(t, dt = 1 / 60) {
     time = t;
-    const oc = clamp01((t - 0.8) / 3.2);
-    setBook(oc < 0.5 ? 4 * oc ** 3 : 1 - (-2 * oc + 2) ** 3 / 2);
-    setGround(smooth01((t - 3.4) / 2.8)); // ゆっくり押し出して、ころころ転がり、最後はそっと止まる
-    setPop(t - 4.2);
+    const intro = !turning && !introDone;
+    if (intro) {
+      const oc = clamp01((t - 0.8) / 3.2);
+      setBook(oc < 0.5 ? 4 * oc ** 3 : 1 - (-2 * oc + 2) ** 3 / 2);
+      setGround(smooth01((t - 3.4) / 2.8)); // ゆっくり押し出して、ころころ転がり、最後はそっと止まる
+      setPop(t - 4.2);
+      if (t >= T_ALLEY) introDone = true;
+    }
     lamp.intensity = 9 * (1 - ease(clamp01((t - 4.8) / 3.2)));
     if (D.scene.fog) D.scene.fog.density = fog0 * (0.25 + 0.75 * ease(clamp01((t - 3.0) / 4.0)));
     const k = clamp01((t - T_X) / X_DUR);
@@ -250,11 +325,14 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     const lookQ = q => q.premultiply(yawQ).multiply(pitchQ);
     const drawPage = (kind, push) => { const P = pages[kind]; if (kind !== 'games') { poseCam(P, push, aspect2); lookQ(P.cam.quaternion); for (const u of P.S.ups) u && u(t); } else if (push) camA.position.addScaledVector(camA.getWorldDirection(new THREE.Vector3()), push); renderer.toneMappingExposure = P.exposure; P.comp.render(); return P.comp; };
     if (turning && turning.t0 != null) {
-      const u = clamp01((t - turning.t0) / TURN), e = ease(u);
-      const a = drawPage(turning.from, 0), b = drawPage(turning.to, 0);
-      // 次へ：今のページが右下からめくれる。前へ：前のページが左から戻ってきて重なる
-      if (turning.dir > 0) outCurl(a, b, e); else outCurl(b, a, 1 - e);
-      if (u >= 1) { page = turning.to; const done = turning.done; turning = null; done && done(); }
+      const tt = turning.skip ? TT : Math.min(TT, t - turning.t0);
+      bookTurnFrame(tt, turning.from, turning.to, turning.dir);
+      renderer.toneMappingExposure = 0.8;
+      const kIn = smooth01(tt / 1.0), kOut = smooth01((tt - 7.6) / 0.8);
+      if (kIn < 1) { const a = drawPage(turning.from, 0); compD.render(); out(a, compD, kIn); }
+      else if (kOut > 0) { compD.render(); const b = drawPage(turning.to, 0); out(compD, b, kOut); }
+      else { compD.render(); out(compD, compD, 0); }
+      if (tt >= TT) { page = turning.to; const done = turning.done; turning = null; done && done(); }
       return;
     }
     if (k >= 1 && page !== 'games') { out(drawPage(page, 0), pages[page].comp, 0); return; }
@@ -305,7 +383,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     turnTo,
     get time() { return time; },
     get inAlley() { return time >= T_ALLEY; },
-    skip() { if (time < T_ALLEY) time = T_ALLEY; },
+    skip() { if (time < T_ALLEY) time = T_ALLEY; if (turning) turning.skip = true; },
     pick, isTap: (x, y) => tap.up(x, y), onFrame(cb) { frameCbs.push(cb); },
     renderAt,
     // 確認用：物の画面上の位置

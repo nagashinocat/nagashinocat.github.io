@@ -29,12 +29,41 @@ const BOOK = { desk: null, covers: {}, pages: {} }, GROUND = [];
   const [c, g] = cv(512, 512); g.fillStyle = '#2a1810'; g.fillRect(0, 0, 512, 512);
   for (let i = 0; i < 80; i++) { g.strokeStyle = `rgba(90,55,30,${Math.random() * 0.5})`; g.lineWidth = 1 + Math.random() * 2; g.beginPath(); const y = Math.random() * 512; g.moveTo(0, y); g.bezierCurveTo(170, y + 8, 340, y - 8, 512, y + 4); g.stroke(); }
   const t = P(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 4);
-  const d = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.MeshStandardMaterial({ map: t, roughness: 0.7 })); d.rotation.x = -Math.PI / 2; d.position.y = -0.04; scene.add(d); BOOK.desk = d;
-  const cover = new THREE.MeshStandardMaterial({ color: '#5a1424', roughness: 0.8 }), paper = new THREE.MeshStandardMaterial({ color: '#d8ccb4', roughness: 1 });
+  // 分厚い本：紙の束（横から見るとページの線）と、革の表紙。表紙の外側には金の猫のマーク
+  const PH = 0.09, CT = 0.022, TOP = 0.0045;
+  const d = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.MeshStandardMaterial({ map: t, roughness: 0.7 })); d.rotation.x = -Math.PI / 2; d.position.y = TOP - PH - CT - 0.001; scene.add(d); BOOK.desk = d;
+  const [ec, eg] = cv(64, 256); eg.fillStyle = '#e4d8bc'; eg.fillRect(0, 0, 64, 256); for (let y = 0; y < 256; y += 3) { eg.fillStyle = `rgba(120,100,70,${0.15 + Math.random() * 0.25})`; eg.fillRect(0, y, 64, 1); }
+  const edgeT = P(ec); edgeT.wrapS = THREE.RepeatWrapping; edgeT.repeat.set(8, 1);
+  const edgeT2 = edgeT.clone(); edgeT2.needsUpdate = true; edgeT2.rotation = Math.PI / 2; edgeT2.repeat.set(1, 8);
+  const pageSide = new THREE.MeshStandardMaterial({ map: edgeT, roughness: 1 }), pageEnd = new THREE.MeshStandardMaterial({ map: edgeT, roughness: 1 });
+  const leather = (() => { const [lc, lg] = cv(512, 512); lg.fillStyle = '#5a1424'; lg.fillRect(0, 0, 512, 512); for (let i = 0; i < 3000; i++) { lg.fillStyle = `rgba(${Math.random() < 0.5 ? '30,6,12' : '120,40,56'},${Math.random() * 0.25})`; lg.fillRect(Math.random() * 512, Math.random() * 512, 2, 2); } return lc; })();
+  const coverM = new THREE.MeshStandardMaterial({ map: P(leather), roughness: 0.75 });
+  // 表紙：金の枠と、まんなかに座った猫のシルエット、下に nagashinocat
+  const [fc, fg] = cv(1024, 1440); fg.drawImage(leather, 0, 0, 1024, 1440);
+  const gold = fg.createLinearGradient(0, 0, 1024, 1440); gold.addColorStop(0, '#f4d78a'); gold.addColorStop(0.5, '#b88a2a'); gold.addColorStop(1, '#f0c968');
+  fg.strokeStyle = gold; fg.lineWidth = 10; fg.strokeRect(60, 60, 904, 1320); fg.lineWidth = 3; fg.strokeRect(84, 84, 856, 1272);
+  fg.fillStyle = gold;
+  fg.save(); fg.translate(512, 640); // 座った猫（横向き、しっぽを巻く）
+  fg.beginPath(); fg.ellipse(0, 120, 150, 190, 0, 0, Math.PI * 2); fg.fill();          // からだ
+  fg.beginPath(); fg.arc(10, -120, 105, 0, Math.PI * 2); fg.fill();                   // あたま
+  fg.beginPath(); fg.moveTo(-80, -170); fg.lineTo(-60, -290); fg.lineTo(-10, -205); fg.fill(); // 耳
+  fg.beginPath(); fg.moveTo(100, -170); fg.lineTo(90, -290); fg.lineTo(30, -205); fg.fill();
+  fg.lineWidth = 42; fg.lineCap = 'round'; fg.strokeStyle = gold; fg.beginPath(); fg.moveTo(130, 260); fg.bezierCurveTo(330, 280, 300, 40, 220, 30); fg.stroke(); // しっぽ
+  fg.fillStyle = '#5a1424'; fg.beginPath(); fg.ellipse(-30, -130, 14, 22, 0, 0, Math.PI * 2); fg.fill(); fg.beginPath(); fg.ellipse(50, -130, 14, 22, 0, 0, Math.PI * 2); fg.fill(); // 目
+  fg.restore();
+  fg.fillStyle = gold; fg.font = '64px "Dela Gothic One", sans-serif'; fg.textAlign = 'center'; fg.fillText('nagashinocat', 512, 1220);
+  const frontT = P(fc); frontT.center.set(0.5, 0.5); frontT.rotation = Math.PI; // 閉じた本の上で正しい向きになるように
+  const frontM = new THREE.MeshStandardMaterial({ map: frontT, roughness: 0.5, metalness: 0.25 });
+  const paper = new THREE.MeshStandardMaterial({ color: '#d8ccb4', roughness: 1 });
   for (const s of [-1, 1]) {
-    const cv0 = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.02, 1.62), cover); cv0.position.set(s * 0.58, -0.03, 0); scene.add(cv0); BOOK.covers[s] = cv0;
-    const pg = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.025, 1.56), paper); pg.position.set(s * 0.56, -0.008, 0); scene.add(pg); BOOK.pages[s] = pg;
+    // 左の表紙の外側（下の面）が、閉じたときに上に来る表紙
+    const cv0 = new THREE.Mesh(new THREE.BoxGeometry(1.16, CT, 1.62), [coverM, coverM, coverM, s < 0 ? frontM : coverM, coverM, coverM]);
+    cv0.position.set(s * 0.58, TOP - PH - CT / 2, 0); scene.add(cv0); BOOK.covers[s] = cv0;
+    const pg = new THREE.Mesh(new THREE.BoxGeometry(1.1, PH, 1.56), [pageSide, pageSide, paper, paper, pageEnd, pageEnd]);
+    pg.position.set(s * 0.56, TOP - PH / 2, 0); scene.add(pg); BOOK.pages[s] = pg;
   }
+  // 背（丸く盛り上がった綴じ目）
+  const spineM = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.62, 16, 1, false, Math.PI, Math.PI), coverM); spineM.rotation.x = Math.PI / 2; spineM.position.set(0, TOP - PH - CT, 0); scene.add(spineM); BOOK.spine = spineM;
 }
 // ---- 夜空の書き割り（本の奥に立つ紙）：月・雲・遠くの高層ビル群 ----
 {
@@ -61,7 +90,7 @@ const BOOK = { desk: null, covers: {}, pages: {} }, GROUND = [];
   // 大通りの路面：濡れたアスファルトを少し透かす（空が映りすぎないように）
   const [ac, ag] = cv(64, 512); ag.fillStyle = 'rgba(26,18,30,0.86)'; ag.fillRect(0, 0, 64, 512);
   ag.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 30; i++) { const x = Math.random() * 64, y = Math.random() * 512, rr = 4 + Math.random() * 14; const gr = ag.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, 'rgba(0,0,0,0.7)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); ag.fillStyle = gr; ag.fillRect(x - rr, y - rr, rr * 2, rr * 2); }
-  const ave = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshBasicMaterial({ map: P(ac), transparent: true, depthWrite: false, opacity: 0.7 })); ave.rotation.x = -Math.PI / 2; ave.position.set(0, 0.0125, 0); scene.add(ave); GROUND.push(ave);
+  const ave = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 1.5), new THREE.MeshBasicMaterial({ map: P(ac), transparent: true, depthWrite: false, opacity: 0.7 })); ave.rotation.x = -Math.PI / 2; ave.position.set(0, 0.0125, 0); scene.add(ave); GROUND.push(ave); GROUND.top = top; GROUND.ave = ave;
 }
 
 const AX = 0.075; // 真ん中の大通りの半幅
