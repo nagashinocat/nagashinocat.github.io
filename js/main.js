@@ -182,7 +182,7 @@ async function startCity(works) {
       // 録画したページめくりを流し、そのあいだに次のページを用意する。流せなければその場でめくる
       const ready = world.prepare(k);
       const played = useFilm && await film.play(filmUrl(`turn-${world.page}-${k}`), { onStart: () => world.setPaused(true) });
-      if (played) { await ready; await world.jumpTo(k); world.setPaused(false); await film.hide(); }
+      if (played) { await ready; await world.jumpTo(k); showPage(world.page); world.setPaused(false); await film.hide(); }
       else { world.setPaused(false); await world.turnTo(k); }
     } catch (e) { console.warn(e); world.setPaused(false); }
     skip.hidden = true; hint.hidden = false;

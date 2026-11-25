@@ -212,11 +212,13 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   A.ups.push(() => counter.update());
 
   // 録画のときは灯りを減らさない（いちばんきれいな見た目で撮る）。生きものとカウンターは映さない
-  if (!record) { optimizeScene(D.scene, { maxLights: 10 }); optimizeScene(A.scene, { maxLights: 16 }); }
-  else for (const o of [cat.group, whale.group, counter.group]) o.visible = false;
+  optimizeScene(D.scene, { maxLights: record ? 64 : 10 }); optimizeScene(A.scene, { maxLights: record ? 96 : 16 });
+  if (record) for (const o of [cat.group, whale.group, counter.group]) o.visible = false;
   for (const o of [cat.group, whale.group, counter.group]) markSharp(o);
   A.scene.traverse(o => { if (o.isPoints) markSharp(o); }); // クジラの星
   lightsForSharp(A.scene);
+
+  const dLights = D.scene.children.filter(o => o.isPointLight && o.userData.base != null);
 
   // ---- 路地での見回し（ドラッグで少しだけ） ----
   const look = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0 };
@@ -239,7 +241,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     const S = kind === 'tools' ? await mod.buildFactoryPaper({ works: ws, screenCanvas }) : await mod.buildLotPaper({ works: ws, screenCanvas });
     if (S.scene.userData.needsEnv) { pmrem ??= new THREE.PMREMGenerator(renderer); S.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; S.scene.environmentIntensity = 0.35; }
     const c = new THREE.PerspectiveCamera(56, W / H, 0.005, 30); c.layers.enable(DETAIL_LAYER);
-    if (!record) optimizeScene(S.scene, { maxLights: 12 });
+    optimizeScene(S.scene, { maxLights: record ? 96 : 12 });
     const sharpS = [...S.stands.map(h => h.parent), S.towerScreen];
     await mergeStatic(S.scene, { exclude: sharpS, ups: S.ups });
     for (const o of sharpS) markSharp(o);
@@ -268,11 +270,14 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   ];
   // 見開きの中身：路地の街（最初のジオラマ）と、工場街・空き地の小さなジオラマ
   const groundTex0 = D.ground.top.material.map;
-  const content = { games: { set: v => { setPop(v * 5.8); }, ground: groundTex0, ave: true, whale: true } };
+  const content = { games: { set: v => { setPop(v * 5.8); for (const L of dLights) L.intensity = L.userData.base * smooth01(v * 1.5 - 0.3); }, ground: groundTex0, ave: true, whale: true } };
   function contentOf(kind) {
     if (content[kind]) return content[kind];
     const M = kind === 'tools' ? buildFactoryMini() : buildLotMini();
-    D.scene.add(M.group); if (!record) optimizeScene(D.scene, { maxLights: 12 });
+    D.scene.add(M.group); M.group.updateMatrixWorld(true);
+    // 灯りは一番上に移して（数が変わらないように）、中身の出し入れに合わせて明るさだけ変える
+    const lights = []; M.group.traverse(o => { if (o.isPointLight) lights.push(o); });
+    for (const L of lights) { const p = L.getWorldPosition(new THREE.Vector3()); L.parent.remove(L); L.position.copy(p); L.userData.base = L.intensity; L.intensity = 0; D.scene.add(L); }
     const pb = new Map(M.items.map(o => [o, o.scale.clone()]));
     const del = new Map(M.items.map(o => { const p = o.getWorldPosition(new THREE.Vector3()); return [o, Math.max(0, (p.z + 0.9) * 0.9 + Math.abs(p.x) * 0.6)]; }));
     const dm = Math.max(...del.values(), 1e-3);
@@ -280,6 +285,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
       const t = v * 2.6;
       for (const o of M.items) { const d = 1.6 * (del.get(o) / dm) ** 0.5, x = clamp01((t - d) / (1.0 - 0.5 * d / 1.6)), k = x <= 0 ? 1e-4 : grow(x), s0 = pb.get(o); o.scale.set(s0.x, s0.y * k, s0.z); o.visible = x > 0; }
       M.group.visible = v > 0;
+      for (const L of lights) L.intensity = L.userData.base * smooth01(v * 1.5 - 0.3);
     };
     set(0);
     return (content[kind] = { set, ground: M.groundTex, ave: false, whale: false, ups: M.ups });
@@ -346,6 +352,8 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
       setBook(oc < 0.5 ? 4 * oc ** 3 : 1 - (-2 * oc + 2) ** 3 / 2);
       setGround(smooth01((t - 3.4) / 2.8)); // ゆっくり押し出して、ころころ転がり、最後はそっと止まる
       setPop(t - 4.2);
+      // 街の灯りは、建物が立ち上がるのに合わせて灯る
+      const lit = smooth01((t - 4.6) / 3.5); for (const L of dLights) L.intensity = L.userData.base * lit;
       if (t >= T_ALLEY) introDone = true;
     }
     lamp.intensity = 9 * (1 - ease(clamp01((t - 4.8) / 3.2)));

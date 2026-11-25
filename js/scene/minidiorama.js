@@ -57,7 +57,7 @@ export function buildFactoryMini(seed = 41) {
     const main = add(shed(0.9, 0.42, 0.42), 0, -0.4);
     const open = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.22), new THREE.MeshBasicMaterial({ color: '#7fe6ff', toneMapped: false })); open.position.set(0, 0.11, 0.212); main.add(open);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: '#4fd8ff', transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.set(0.5, 0.28, 1); halo.position.set(0, 0.12, 0.25); main.add(halo);
-    const L = new THREE.PointLight('#7fe6ff', 0.6, 0.9, 1.6); L.position.set(0, 0.12, 0.35); main.add(L);
+    const L = new THREE.PointLight('#7fe6ff', 0.3, 0.8, 1.6); L.position.set(0, 0.12, 0.35); main.add(L);
     open.material.color.setScalar(0.55);
     const roof = edged(new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.02, 0.44), paper(null, { color: '#5a3a2c' }))); roof.position.y = 0.43; main.add(roof);
   }
@@ -93,7 +93,7 @@ export function buildFactoryMini(seed = 41) {
   }
   // 外の灯り
   for (const [x, z] of [[-0.45, 0.35], [0.45, 0.4], [0, 0.0]]) {
-    const L = new THREE.PointLight('#ffb060', 0.25, 0.5, 2); L.position.set(x, 0.12, z); group.add(L);
+    const L = new THREE.PointLight('#ffb060', 0.1, 0.4, 2); L.position.set(x, 0.12, z); group.add(L);
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: smoke, color: '#ffb060', transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false })); s.scale.setScalar(0.12); s.position.set(x, 0.12, z); group.add(s); items.push(s);
   }
   return { group, items, groundTex: groundCanvas('tools', r), ups };
@@ -126,7 +126,7 @@ export function buildLotMini(seed = 43) {
     const h = add(new THREE.Group(), -0.05, 0.05);
     const rim = edged(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.21, 0.02, 40, 1, true), new THREE.MeshStandardMaterial({ color: '#5a5458', side: THREE.DoubleSide })), 50); rim.position.y = 0.01; h.add(rim);
     const glow = new THREE.Mesh(new THREE.CircleGeometry(0.2, 40), new THREE.MeshBasicMaterial({ color: '#5ff0ff', toneMapped: false })); glow.rotation.x = -Math.PI / 2; glow.position.y = 0.004; h.add(glow);
-    const L = new THREE.PointLight('#5ff0ff', 1.4, 1.0, 1.6); L.position.y = 0.08; h.add(L);
+    const L = new THREE.PointLight('#5ff0ff', 0.6, 0.8, 1.6); L.position.y = 0.08; h.add(L);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: '#4fe8ff', transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.set(0.5, 0.2, 1); halo.position.y = 0.05; h.add(halo);
     const stripes = (() => { const c = cv(512, 32), g = c.getContext('2d'); g.fillStyle = '#2a2224'; g.fillRect(0, 0, 512, 32); for (let x = -32; x < 544; x += 24) { g.fillStyle = '#e8b818'; g.beginPath(); g.moveTo(x, 32); g.lineTo(x + 12, 32); g.lineTo(x + 24, 0); g.lineTo(x + 12, 0); g.fill(); } return tx(c); })();
     const lid = edged(new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.23, 0.025, 40), [paper(stripes), paper(null, { color: '#4a4246' }), paper(null, { color: '#2a2224' })]), 50);
@@ -139,6 +139,6 @@ export function buildLotMini(seed = 43) {
   const gm = new THREE.MeshStandardMaterial({ map: grass, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide });
   for (let i = 0; i < 60; i++) { const x = (r.next() - 0.5) * 1.7, z = -0.45 + r.next() * 1.1; if (Math.hypot(x + 0.05, z - 0.05) < 0.26) continue; const g = add(new THREE.Group(), x, z, r.next() * 3); for (let k = 0; k < 2; k++) { const p = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.04), gm); p.position.y = 0.02; p.rotation.y = k * Math.PI / 2; g.add(p); } }
   // 夕暮れのピンクの灯り
-  const dusk = new THREE.PointLight('#ff8ac8', 0.8, 2.0, 1.4); dusk.position.set(0, 0.6, -0.9); group.add(dusk);
+  const dusk = new THREE.PointLight('#ff8ac8', 0.5, 2.0, 1.4); dusk.position.set(0, 0.6, -0.9); group.add(dusk);
   return { group, items, groundTex: groundCanvas('wip', r), ups };
 }

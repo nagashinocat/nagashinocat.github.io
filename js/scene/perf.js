@@ -27,14 +27,15 @@ export function optimizeScene(scene, { maxLights = 10, reflectEvery = 2 } = {}) 
     }
     groups = next;
   }
-  if (groups.length < lights.length) {
+  // まとめなくても、灯りはすべて一番上に移す（建物が出たり消えたりしても灯りの数が変わらない＝描き方の作り直しが起きない）
+  {
     for (const L of lights) L.parent?.remove(L);
     for (const g of groups) {
       const w = g.reduce((a, b) => a + b.w, 0), cg = center(g);
       const spread = Math.max(...g.map(it => it.p.distanceTo(cg)));
       const col = new THREE.Color(0, 0, 0); for (const it of g) col.add(it.c.clone().multiplyScalar(it.w / w));
       const L = new THREE.PointLight(col, g.length > 1 ? w * 0.75 / Math.sqrt(g.length) * 1.6 : w, Math.max(...g.map(it => it.d)) + spread * 0.6, g[0].decay);
-      L.position.copy(cg); scene.add(L);
+      L.position.copy(cg); L.userData.base = L.intensity; scene.add(L);
     }
   }
   return { before: lights.length, after: Math.min(lights.length, maxLights) };

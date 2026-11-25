@@ -1,0 +1,16 @@
+import { chromium } from 'playwright';
+import { serve } from '../serve.mjs';
+import { routeThree } from './site.mjs';
+const srv = await serve();
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: 480, height: 270 } });
+p.on('console', m => m.type() === 'error' && console.log('CON', m.text().slice(0, 200))); p.on('pageerror', e => console.log('ERR', e.message));
+await routeThree(p); await p.goto(srv.url + '/?record');
+await p.waitForFunction(() => window.__hub?.world, null, { timeout: 300000 });
+await p.evaluate(() => window.__hub.world.renderAt(12)); await p.screenshot({ path: 'tests/out/seq-direct.png' });
+const info = () => p.evaluate(() => { let L = 0, V = 0; window.__hub.world.__scenes.D.traverse(o => { if (o.isLight) { L++; if (o.visible) V++; } }); return [L, V, window.__hub.world.renderer.info.programs.length]; });
+console.log('direct', await info());
+for (let i = 0; i <= 360; i += 3) await p.evaluate(i => window.__hub.world.renderAt(i / 30, 1 / 30), i);
+await p.screenshot({ path: 'tests/out/seq-seq.png' });
+console.log('seq', await info());
+await b.close(); srv.close();

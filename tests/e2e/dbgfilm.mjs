@@ -1,0 +1,28 @@
+import { chromium } from 'playwright';
+import { readFileSync } from 'node:fs';
+import { serve } from '../serve.mjs';
+import { routeThree } from './site.mjs';
+const srv = await serve();
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
+const p = await b.newPage({ viewport: { width: 640, height: 360 } });
+p.setDefaultTimeout(300000);
+p.on('pageerror', e => console.log('ERR', e.message)); p.on('console', m => console.log('CON', m.type(), m.text().slice(0, 160)));
+await routeThree(p);
+// 手元の Chromium は H.264 を再生できないので、確認用に短い WebM に差しかえる
+await p.route('**/assets/film/intro-*.mp4', r => r.fulfill({ body: readFileSync('/tmp/intro-test.webm'), contentType: 'video/webm' }));
+await p.route('**/assets/film/turn-*.mp4', r => r.fulfill({ body: readFileSync('/tmp/turn-test.webm'), contentType: 'video/webm' }));
+const t0 = Date.now();
+await p.goto(srv.url + '/');
+await p.waitForFunction(() => document.getElementById('film').classList.contains('on'));
+console.log('film on at', Date.now() - t0);
+await p.screenshot({ path: 'tests/out/film-a.png' });
+await p.waitForFunction(() => window.__hub?.ready);
+console.log('ready at', Date.now() - t0, 'film on?', await p.evaluate(() => document.getElementById('film').classList.contains('on')), 'page', await p.evaluate(() => window.__hub.world.page));
+await p.waitForTimeout(1500); await p.screenshot({ path: 'tests/out/film-b.png' });
+await p.click('#next');
+await p.waitForFunction(() => document.getElementById('film').classList.contains('on'));
+console.log('turn film on');
+await p.waitForFunction(() => window.__hub.world.page === 'tools' && !document.getElementById('film').classList.contains('on'));
+console.log('turned', await p.textContent('#district-name'));
+await p.waitForTimeout(1500); await p.screenshot({ path: 'tests/out/film-c.png' });
+await b.close(); srv.close();
