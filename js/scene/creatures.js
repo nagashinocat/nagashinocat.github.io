@@ -30,10 +30,23 @@ function rigOf(root) {
 }
 
 // 輪郭がうっすら光る（暗い路地でも黒猫の形が分かるように）
-function rim(mat, color, k) {
+function rim(mat, color, k, melt = null) {
   mat.onBeforeCompile = sh => {
     sh.uniforms.rimC = { value: new THREE.Color(color).multiplyScalar(k) };
     sh.fragmentShader = 'uniform vec3 rimC;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += rimC * pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 3.0);');
+    if (!melt) return;
+    // 溶ける：猫の形のまま、上からどろっと垂れ落ちて、足もとに広がる（ところどころ先に垂れるしずく）
+    Object.assign(sh.uniforms, melt);
+    sh.vertexShader = 'uniform float uMelt, uMinY, uMaxY;\n' + sh.vertexShader.replace('#include <skinning_vertex>', `#include <skinning_vertex>
+      {
+        float h = clamp((transformed.y - uMinY) / (uMaxY - uMinY), 0., 1.);
+        float n = sin(transformed.x * 7.3 + 1.1) * sin(transformed.z * 5.7 + 2.3) * 0.5 + 0.5;
+        float sag = smoothstep(0., 1., uMelt * 1.9 - (1. - h) * 0.75 - n * 0.35 * (1. - uMelt));
+        float spread = 1. + sag * (0.25 + 0.65 * (1. - h)) * uMelt;
+        transformed.x *= spread; transformed.z *= spread;
+        transformed.y = mix(transformed.y, uMinY + (transformed.y - uMinY) * 0.03 + n * 0.02 * (uMaxY - uMinY) * (1. - uMelt), sag);
+      }`);
+    sh.fragmentShader = 'uniform float uMelt;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb *= 1. - 0.75 * uMelt;');
   };
 }
 
@@ -75,7 +88,8 @@ function shadowMesh() {
 // ================= 黒猫 =================
 export async function addCat(scene, { height = 0.034, area = { x: [-0.09, 0.09], z: [-0.75, 0.55] }, seed = 1, script = [] } = {}) {
   const g = await loader.loadAsync(ROOT + 'assets/models/cat.glb');
-  const model = g.scene; model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; if (o.material) { o.material.roughness = 0.75; rim(o.material, '#a89cff', 1.6); } } });
+  const melt = { uMelt: { value: 0 }, uMinY: { value: 0 }, uMaxY: { value: 1 } };
+  const model = g.scene; model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.geometry.computeBoundingBox(); melt.uMinY.value = o.geometry.boundingBox.min.y; melt.uMaxY.value = o.geometry.boundingBox.max.y; if (o.material) { o.material.roughness = 0.75; rim(o.material, '#a89cff', 1.6, melt); } } });
   const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
   const k = height / size.y;
   const body = new THREE.Group(); body.add(model); model.scale.setScalar(k); model.position.y = -box.min.y * k;
@@ -164,10 +178,9 @@ export async function addCat(scene, { height = 0.034, area = { x: [-0.09, 0.09],
       const ease = x => { x = clamp01(x); return x < 0.5 ? 2 * x * x : 1 - (-2 * x + 2) ** 2 / 2; };
       const puddle = (sx, sz, wob, ink, shine) => { shadow.visible = sx > 0.01; shadow.scale.set(H * sx, H * sz, 1); su.wob.value = wob; su.ink.value = ink; su.shine.value = shine; su.stretch.value = 0; };
       if (e < 2.6) { // とける：上からゆっくりたれて、横にどろっと広がる
-        const v = ease(e / 2.6), sag = Math.sin(t * 2.2) * 0.05 * v * (1 - v);
-        body.visible = true;
-        body.scale.set(1 + 0.7 * v + sag, Math.max(0.02, 1 - v ** 1.3), 1 + 0.7 * v - sag);
-        body.position.y = -H * 0.25 * v * v;
+        const v = clamp01(e / 2.6);
+        body.visible = true; body.scale.set(1, 1, 1); body.position.y = 0;
+        melt.uMelt.value = v;
         puddle(1.4 + 1.3 * v, 1.9 + 0.9 * v, 0.4 + 0.6 * v, 0.75 + 0.2 * v, v);
       } else if (e < 3.8) { // 吸い込まれる：水たまりが真ん中へすぼまって、地面にしみこむ
         const v = ease((e - 2.6) / 1.2);
@@ -180,15 +193,14 @@ export async function addCat(scene, { height = 0.034, area = { x: [-0.09, 0.09],
         shadow.visible = true; cat.position.copy(warp.to);
         puddle(2.7 * v, 2.8 * v, 1, 0.5 + 0.45 * v, v);
       } else { // 出てくる：水たまりからゆっくり盛り上がって猫になる
-        const v = ease((e - 5.6) / 1.8), over = Math.sin(v * Math.PI) * 0.12;
-        body.visible = true;
-        body.scale.set(1.6 - 0.6 * v - over * 0.4, Math.max(0.02, v + over), 1.6 - 0.6 * v - over * 0.4);
-        body.position.y = -H * 0.25 * (1 - v) ** 2;
+        const v = clamp01((e - 5.6) / 1.8);
+        body.visible = true; body.scale.set(1, 1, 1); body.position.y = 0;
+        melt.uMelt.value = 1 - v; // 逆再生：水たまりから猫の形に盛り上がる
         puddle(1.4 + 1.3 * (1 - v), 1.9 + 0.9 * (1 - v), 1 - v * 0.9, 0.95 - 0.2 * v, 1 - v);
       }
       const u = e / 7.4;
       poseSit(0); poseTail(t * 2, 0);
-      if (u >= 1) { warp = null; body.scale.set(1, 1, 1); body.position.y = 0; su.wob.value = 0; su.shine.value = 0; su.ink.value = 0.75; shadow.visible = true; st.mode = 'walk'; st.t0 = t; next(t); st.dur = Math.min(st.dur, st.mode === 'sleep' ? 99 : 3); }
+      if (u >= 1) { warp = null; melt.uMelt.value = 0; body.scale.set(1, 1, 1); body.position.y = 0; su.wob.value = 0; su.shine.value = 0; su.ink.value = 0.75; shadow.visible = true; st.mode = 'walk'; st.t0 = t; next(t); st.dur = Math.min(st.dur, st.mode === 'sleep' ? 99 : 3); }
     } else {
       const el = t - st.t0;
       if (st.mode === 'walk') {
@@ -218,6 +230,7 @@ export async function addCat(scene, { height = 0.034, area = { x: [-0.09, 0.09],
     group: cat, hit, update,
     get mode() { return warp ? 'warp' : st.mode; },
     // 確認用：姿勢を固定して見る
+    debugMelt(v) { melt.uMelt.value = v; },
     debugRot(list) { rig.reset(); for (const [n, a] of list) rig.rot(n, [1, 0, 0], a); },
     debugPose(name, w = 1, t = 0) { rig.reset(); body.position.y = 0; ({ walk: () => poseWalk(t, w), sit: () => { poseSit(w); body.position.y = -bodyDrop.sit * w * height; }, stretch: () => { poseStretch(w); body.position.y = -bodyDrop.stretch * w * height; }, sleep: () => { poseSleep(w, 0); poseTail(0, w); body.position.y = -bodyDrop.sleep * w * height; } })[name]?.(); },
     // タッチ：今の場所から少し離れた場所へワープ

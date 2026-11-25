@@ -75,6 +75,7 @@ async function startCity(works) {
     billboard.tick(dt);
     const st = billboard.state();
     hub.selected = st.mode === 'ticker' ? null : st.workId;
+    world.setSelected(hub.selected);
     for (const h of world.stands) { if (!faceBase.has(h)) faceBase.set(h, h.userData.faceMat.color.clone()); const on = h.userData.workId === hub.selected; h.userData.faceMat.color.copy(faceBase.get(h)).multiplyScalar(on ? 1.35 + 0.25 * Math.sin(t * 6) : 1); }
     if (st.text !== lastText) { lastText = st.text; scroll = 0; updatePlayButton(st); }
     scroll += dt * 26;
@@ -145,14 +146,20 @@ async function startCity(works) {
   });
 
   const hint = $('hint'), play = $('play'), skip = $('skip');
+  // 看板に触れたら小窓を出す：左に題名と説明、右に掲示板のムービー（なければ画面写真）
+  const pv = $('preview'), pvVideo = $('pv-video'), pvImg = $('pv-img');
   function updatePlayButton(st) {
-    if (st.mode === 'ticker') { play.hidden = true; hint.hidden = !hub.ready; return; }
+    if (st.mode === 'ticker') { pv.hidden = true; pvVideo.pause(); hint.hidden = !hub.ready; return; }
     hint.hidden = true;
-    play.hidden = false;
     const w = works.find(x => x.id === st.workId);
+    $('pv-title').textContent = w.title; $('pv-blurb').textContent = w.blurb || '';
     play.classList.toggle('wip', st.mode === 'wip');
-    play.textContent = st.mode === 'wip' ? `工事中：${w.title}` : `▶ あそぶ：${w.title}`;
+    play.textContent = st.mode === 'wip' ? '工事中' : '▶ あそぶ';
     play.disabled = st.mode === 'wip';
+    if (w.cm) { pvImg.hidden = true; pvVideo.hidden = false; if (!pvVideo.src.endsWith(w.cm)) pvVideo.src = w.cm; pvVideo.play().catch(() => { pvVideo.hidden = true; pvImg.hidden = false; }); }
+    else { pvVideo.pause(); pvVideo.hidden = true; pvImg.hidden = !w.shot; if (w.shot) pvImg.src = w.shot; }
+    if (!w.cm && w.shot) pvImg.hidden = false;
+    pv.hidden = false;
   }
   play.addEventListener('click', () => selection.tap({ billboard: true }));
   function skipIntro() { if (film.playing) film.skip(); else world.skip(); }

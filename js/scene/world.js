@@ -200,6 +200,33 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   await mergeStatic(A.scene, { exclude: sharpA, ups: A.ups });
   for (const o of sharpA) markSharp(o);
 
+  // ---- 作品の看板の上に、はずむ三角の矢印（看板が埋もれても見つけられるように）----
+  const arrowTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+    g.shadowColor = 'rgba(255,170,60,0.9)'; g.shadowBlur = 18; g.fillStyle = '#ffb02e'; g.strokeStyle = '#1a1014'; g.lineWidth = 8; g.lineJoin = 'round';
+    g.beginPath(); g.moveTo(22, 30); g.lineTo(106, 30); g.lineTo(64, 104); g.closePath(); g.fill(); g.shadowBlur = 0; g.stroke();
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const markers = [];
+  function addMarkers(hits) {
+    for (const h of hits) {
+      if (!h.geometry.boundingBox) h.geometry.computeBoundingBox();
+      const top = h.geometry.boundingBox.max.y * h.scale.y;
+      const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: arrowTex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
+      m.renderOrder = 10; m.center.set(0.5, 0);
+      m.position.copy(h.position).add(new THREE.Vector3(0, top + 0.012, 0));
+      h.parent.add(m); markSharp(m);
+      markers.push({ m, h, y0: m.position.y, ph: markers.length * 0.7 });
+    }
+  }
+  function updateMarkers(t, selectedId) {
+    for (const k of markers) {
+      const on = k.h.userData.workId === selectedId, s = on ? 0.026 : 0.018;
+      k.m.scale.set(s, s, 1);
+      k.m.position.y = k.y0 + Math.abs(Math.sin(t * 3 + k.ph)) * 0.012;
+      k.m.material.color.set(on ? '#ff7ad0' : '#ffffff');
+    }
+  }
+  addMarkers(A.stands);
+
   // ---- 生きもの ----
   const whaleD = await addWhale(D.scene, { length: 0.32, center: [0, 0.93, -0.38], radius: [0.38, 0.15], speed: 0.13, phase0: 2.2 });
   whaleD.group.visible = false;
@@ -245,6 +272,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     const sharpS = [...S.stands.map(h => h.parent), S.towerScreen];
     await mergeStatic(S.scene, { exclude: sharpS, ups: S.ups });
     for (const o of sharpS) markSharp(o);
+    addMarkers(S.stands);
     lightsForSharp(S.scene);
     const comp = mkComp(S.scene, c); comp.setSize(W, H);
     const pose = kind === 'tools' ? mod.FACTORY_CAM : mod.LOT_CAM;
@@ -341,7 +369,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   }
 
   // ---- 時間と描画 ----
-  let time = reducedMotion || startInAlley ? T_ALLEY : 0, introDone = false, paused = false;
+  let time = reducedMotion || startInAlley ? T_ALLEY : 0, introDone = false, paused = false, selectedId = null;
   const frameCbs = [];
   const yawQ = new THREE.Quaternion(), pitchQ = new THREE.Quaternion();
   function renderAt(t, dt = 1 / 60) {
@@ -372,6 +400,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
       cat.update(t); whale.update(t);
     }
     for (const cb of frameCbs) cb(dt, t);
+    updateMarkers(t, selectedId);
     // 他のページ（工場・空き地）とめくりの途中
     const aspect2 = W / H;
     const lookQ = q => q.premultiply(yawQ).multiply(pitchQ);
@@ -436,6 +465,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     get stands() { return Object.values(pages).flatMap(p => p.S.stands); },
     get screenTex() { return pages[page].S.screenTex; },
     turnTo,
+    setSelected(id) { selectedId = id; },
     setPaused(v) { paused = v; last = performance.now(); },
     replayIntro() { time = 0; introDone = false; },
     // 録画を見せたあとなどに、アニメーションなしでそのページへ

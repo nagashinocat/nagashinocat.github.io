@@ -33,7 +33,10 @@
 
 <p id="hint" class="hint" hidden></p>
 
-<button id="play" class="play" hidden></button>
+<aside id="preview" class="preview" hidden aria-live="polite">
+  <div class="pv-text"><h2 id="pv-title"></h2><p id="pv-blurb"></p><button id="play" class="play">▶ あそぶ</button></div>
+  <div class="pv-media"><video id="pv-video" muted playsinline loop preload="none"></video><img id="pv-img" alt=""></div>
+</aside>
 
 <button id="skip" class="btn skip" hidden>スキップ ▶▶</button>
 
