@@ -10,7 +10,7 @@ import { addCat, addWhale } from './creatures.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildFactoryMini, buildLotMini } from './minidiorama.js';
 import { counterBoard } from './counterboard.js';
-import { optimizeScene, adaptiveResolution, mergeStatic, DETAIL_LAYER } from './perf.js';
+import { optimizeScene, adaptiveResolution, mergeStatic, findDynamic, markSharp, lightsForSharp, DETAIL_LAYER, SHARP_LAYER, OCCLUDER_LAYER } from './perf.js';
 import { createTapGuard } from '../util.js';
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
@@ -67,10 +67,12 @@ function camAt(c, t, keys, aspect) {
  * opts: { works, screenCanvas(640x360), tier: 'high'|'low', reducedMotion, manual }
  * 返り値: { renderer, time, phase, skip(), pick(x,y), isTap(x,y), onFrame(cb), renderAt(t), screenTex, stands, cat, whale, dispose() }
  */
-export async function createWorld(container, { works, screenCanvas, tier = 'high', reducedMotion = false, manual = false } = {}) {
-  const renderer = new THREE.WebGLRenderer({ antialias: tier === 'high', powerPreference: 'high-performance' });
-  const PR_MAX = Math.min(devicePixelRatio, tier === 'high' ? 1.5 : 1);
-  renderer.setPixelRatio(PR_MAX);
+export async function createWorld(container, { works, screenCanvas, tier = 'high', reducedMotion = false, manual = false, record = false, startInAlley = false } = {}) {
+  // 画面そのもの（看板・猫・クジラを描く所）はいつも細かく。背景は別に、軽い細かさで描いてから重ねる
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  const SHARP_PR = record ? 1 : Math.min(devicePixelRatio, 2);
+  let BG_PR = record ? 1 : Math.min(devicePixelRatio, tier === 'high' ? 1 : 0.75);
+  renderer.setPixelRatio(SHARP_PR);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   container.append(renderer.domElement);
   const size = () => [container.clientWidth || innerWidth, container.clientHeight || innerHeight];
@@ -82,9 +84,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   const A = await buildAlleyPaper({ entry: 1.5, works: works?.filter(w => w.district === 'games'), screenCanvas });
 
   // 2つの場面をそれぞれ描いて、重ねて溶かす（暗転させない）
-  const bloomRes = 0.5; // 光のにじみは半分の細かさで十分
-  const blooms = [];
-  const mkComp = (sc, c) => { const k = new EffectComposer(renderer); k.renderToScreen = false; k.addPass(new RenderPass(sc, c)); const b = new UnrealBloomPass(new THREE.Vector2(W * bloomRes, H * bloomRes), 0.75, 0.65, 0.88); blooms.push(b); k.addPass(b); k.addPass(new OutputPass()); return k; };
+  const mkComp = (sc, c) => { const k = new EffectComposer(renderer); k.renderToScreen = false; k.setPixelRatio(BG_PR); k.setSize(W, H); k.addPass(new RenderPass(sc, c)); k.addPass(new UnrealBloomPass(new THREE.Vector2(W * BG_PR, H * BG_PR), 0.75, 0.65, 0.88)); k.addPass(new OutputPass()); return k; };
   const compD = mkComp(D.scene, cam), compA = mkComp(A.scene, camA);
   const mix = new THREE.ShaderMaterial({ uniforms: { a: { value: null }, b: { value: null }, k: { value: 0 } }, depthTest: false, depthWrite: false,
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
@@ -120,6 +120,22 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
       }` });
   const cScene = new THREE.Scene(); cScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), curl));
   function outCurl(a, b, k) { curl.uniforms.a.value = a.readBuffer.texture; curl.uniforms.b.value = b.readBuffer.texture; curl.uniforms.k.value = k; curl.uniforms.asp.value = W / H; renderer.setRenderTarget(null); const tm = renderer.toneMapping; renderer.toneMapping = THREE.NoToneMapping; renderer.render(cScene, qCam); renderer.toneMapping = tm; }
+  // 背景（軽い細かさ＋光のにじみ）を敷いて、その上に看板・猫・クジラを画面の細かさで描く
+  const depthOnly = new THREE.MeshBasicMaterial({ colorWrite: false });
+  function present(comp, scene, camera, exposure) {
+    out(comp, comp, 0);
+    const bg = scene.background, mirrors = [];
+    scene.traverse(o => { if ((o.isReflector || o.type === 'Reflector') && o.visible) { mirrors.push(o); o.visible = false; } });
+    scene.background = null;
+    renderer.autoClear = false; renderer.clearDepth();
+    // 1) 遮る物の奥行きだけ（色は描かない）
+    const lay = camera.layers.mask;
+    camera.layers.set(OCCLUDER_LAYER); scene.overrideMaterial = depthOnly; renderer.render(scene, camera);
+    // 2) 看板・猫・クジラを細かく
+    scene.overrideMaterial = null; camera.layers.set(SHARP_LAYER);
+    renderer.toneMappingExposure = exposure; renderer.render(scene, camera);
+    camera.layers.mask = lay; scene.background = bg; for (const m of mirrors) m.visible = true; renderer.autoClear = true;
+  }
   function out(a, b, k) { mix.uniforms.a.value = a.readBuffer.texture; mix.uniforms.b.value = b.readBuffer.texture; mix.uniforms.k.value = k; renderer.setRenderTarget(null); const tm = renderer.toneMapping; renderer.toneMapping = THREE.NoToneMapping; renderer.render(qScene, qCam); renderer.toneMapping = tm; }
 
   // ---- 閉じた本：左半分（表紙＋左のページ）を背の所で右へ折り重ねておく ----
@@ -134,6 +150,8 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   const pops = [];
   for (const sd of [-1, 1]) for (const o of D.sides[sd].inner.children) pops.push(o);
   for (const o of D.scene.children) { if (fixed.has(o) || o.isLight || o.isCamera) continue; pops.push(o); }
+  // 立ち上がる建物ごとに、中の動かない部品をまとめる（描く回数を減らす）
+  { const dynD = findDynamic(D.scene, D.ups); for (const o of pops) if (!o.isMesh && !o.isSprite) await mergeStatic(D.scene, { into: o, dynamic: dynD }); }
   const base = new Map(pops.map(o => [o, o.scale.clone()]));
   const delayOf = o => { const p = new THREE.Vector3(); o.getWorldPosition(p); return Math.max(0, (p.z + 0.9) * 0.9 + Math.abs(p.x) * 0.6); };
   const rawD = pops.map(delayOf), dMax = Math.max(...rawD, 1e-3);
@@ -177,7 +195,10 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   const fog0 = D.scene.fog ? D.scene.fog.density : 0;
 
   // 路地の動かない物をまとめる（的になる看板・タワーの画面は別のまま）
-  const mergedA = await mergeStatic(A.scene, { exclude: [...A.stands.map(h => h.parent), A.towerScreen], ups: A.ups });
+  const sharpA = []; A.scene.traverse(o => { if (o.userData.sharp) sharpA.push(o); });
+  sharpA.push(...A.stands.map(h => h.parent), A.towerScreen);
+  await mergeStatic(A.scene, { exclude: sharpA, ups: A.ups });
+  for (const o of sharpA) markSharp(o);
 
   // ---- 生きもの ----
   const whaleD = await addWhale(D.scene, { length: 0.32, center: [0, 0.93, -0.38], radius: [0.38, 0.15], speed: 0.13, phase0: 2.2 });
@@ -190,7 +211,12 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   counter.group.position.set(-0.088, 0.1, 0.43); counter.group.rotation.y = Math.PI / 2 - 0.95; A.scene.add(counter.group);
   A.ups.push(() => counter.update());
 
-  optimizeScene(D.scene, { maxLights: 10 }); optimizeScene(A.scene, { maxLights: 16 });
+  // 録画のときは灯りを減らさない（いちばんきれいな見た目で撮る）。生きものとカウンターは映さない
+  if (!record) { optimizeScene(D.scene, { maxLights: 10 }); optimizeScene(A.scene, { maxLights: 16 }); }
+  else for (const o of [cat.group, whale.group, counter.group]) o.visible = false;
+  for (const o of [cat.group, whale.group, counter.group]) markSharp(o);
+  A.scene.traverse(o => { if (o.isPoints) markSharp(o); }); // クジラの星
+  lightsForSharp(A.scene);
 
   // ---- 路地での見回し（ドラッグで少しだけ） ----
   const look = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0 };
@@ -213,8 +239,11 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     const S = kind === 'tools' ? await mod.buildFactoryPaper({ works: ws, screenCanvas }) : await mod.buildLotPaper({ works: ws, screenCanvas });
     if (S.scene.userData.needsEnv) { pmrem ??= new THREE.PMREMGenerator(renderer); S.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; S.scene.environmentIntensity = 0.35; }
     const c = new THREE.PerspectiveCamera(56, W / H, 0.005, 30); c.layers.enable(DETAIL_LAYER);
-    optimizeScene(S.scene, { maxLights: 12 });
-    await mergeStatic(S.scene, { exclude: [...S.stands.map(h => h.parent), S.towerScreen], ups: S.ups });
+    if (!record) optimizeScene(S.scene, { maxLights: 12 });
+    const sharpS = [...S.stands.map(h => h.parent), S.towerScreen];
+    await mergeStatic(S.scene, { exclude: sharpS, ups: S.ups });
+    for (const o of sharpS) markSharp(o);
+    lightsForSharp(S.scene);
     const comp = mkComp(S.scene, c); comp.setSize(W, H);
     const pose = kind === 'tools' ? mod.FACTORY_CAM : mod.LOT_CAM;
     pages[kind] = { S, comp, cam: c, pose, exposure: kind === 'tools' ? 0.8 : 0.78, targets: [...S.stands, S.towerScreen] };
@@ -243,7 +272,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   function contentOf(kind) {
     if (content[kind]) return content[kind];
     const M = kind === 'tools' ? buildFactoryMini() : buildLotMini();
-    D.scene.add(M.group); optimizeScene(D.scene, { maxLights: 12 });
+    D.scene.add(M.group); if (!record) optimizeScene(D.scene, { maxLights: 12 });
     const pb = new Map(M.items.map(o => [o, o.scale.clone()]));
     const del = new Map(M.items.map(o => { const p = o.getWorldPosition(new THREE.Vector3()); return [o, Math.max(0, (p.z + 0.9) * 0.9 + Math.abs(p.x) * 0.6)]; }));
     const dm = Math.max(...del.values(), 1e-3);
@@ -306,7 +335,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   }
 
   // ---- 時間と描画 ----
-  let time = reducedMotion ? T_ALLEY : 0, introDone = false;
+  let time = reducedMotion || startInAlley ? T_ALLEY : 0, introDone = false, paused = false;
   const frameCbs = [];
   const yawQ = new THREE.Quaternion(), pitchQ = new THREE.Quaternion();
   function renderAt(t, dt = 1 / 60) {
@@ -350,7 +379,8 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
       if (tt >= TT) { page = turning.to; const done = turning.done; turning = null; done && done(); }
       return;
     }
-    if (k >= 1 && page !== 'games') { out(drawPage(page, 0), pages[page].comp, 0); return; }
+    if (k >= 1 && page !== 'games') { const P = pages[page]; present(drawPage(page, 0), P.S.scene, P.cam, P.exposure); return; }
+    if (k >= 1) { renderer.toneMappingExposure = 0.72; compA.render(); present(compA, A.scene, camA, 0.72); return; }
     if (k < 1) { renderer.toneMappingExposure = 0.8; compD.render(); }
     if (k > 0) { renderer.toneMappingExposure = 0.72; compA.render(); }
     out(k < 1 ? compD : compA, k > 0 ? compA : compD, ease(k));
@@ -359,8 +389,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   function resize() {
     [W, H] = size(); if (!W || !H) return;
     renderer.setSize(W, H);
-    for (const c of [compD, ...Object.values(pages).map(p => p.comp)]) c.setSize(W, H);
-    for (const b of blooms) b.setSize(W * bloomRes, H * bloomRes);
+    for (const c of [compD, ...Object.values(pages).map(p => p.comp)]) { c.setPixelRatio(BG_PR); c.setSize(W, H); }
   }
   const ro = new ResizeObserver(resize); ro.observe(container);
 
@@ -381,12 +410,13 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     return o.userData.workId ? { workId: o.userData.workId } : null;
   }
 
-  const tune = adaptiveResolution({ min: 0.6, max: PR_MAX, start: PR_MAX, apply: pr => { renderer.setPixelRatio(pr); resize(); } });
+  const tune = adaptiveResolution({ min: 0.5, max: BG_PR, start: BG_PR, apply: pr => { if (pr === BG_PR) return; BG_PR = pr; for (const c of [compD, ...Object.values(pages).map(p => p.comp)]) { c.setPixelRatio(pr); c.setSize(W, H); } } });
   let running = !manual, last = performance.now();
   function loop() {
     if (!running) return;
     requestAnimationFrame(loop);
     const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (paused) return; // 録画を流しているあいだは描かない
     renderAt(time + dt, dt);
     if (!document.hidden) tune(dt);
   }
@@ -398,6 +428,11 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     get stands() { return Object.values(pages).flatMap(p => p.S.stands); },
     get screenTex() { return pages[page].S.screenTex; },
     turnTo,
+    setPaused(v) { paused = v; last = performance.now(); },
+    replayIntro() { time = 0; introDone = false; },
+    // 録画を見せたあとなどに、アニメーションなしでそのページへ
+    async jumpTo(kind) { if (turning || !PAGES.includes(kind)) return; await buildPage(kind); time = Math.max(time, T_ALLEY); page = kind; },
+    prepare: buildPage,
     setVisitors(n) { counter.set(n); },
     get time() { return time; },
     get inAlley() { return time >= T_ALLEY; },

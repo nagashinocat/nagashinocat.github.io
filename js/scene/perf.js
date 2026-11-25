@@ -50,7 +50,7 @@ export function adaptiveResolution({ min = 0.6, max = 1.5, start = 1, apply }) {
     if (n < 30) return;
     const avg = acc / n; acc = 0; n = 0;
     if (avg > 1 / 40 && pr > min) { pr = Math.max(min, pr - 0.15); calm = 0; apply(pr); }
-    else if (avg < 1 / 57 && pr < max && ++calm >= 4) { pr = Math.min(max, pr + 0.1); calm = 0; apply(pr); }
+    else if (avg < 1 / 58 && pr < max && ++calm >= 10) { pr = Math.min(max, pr + 0.1); calm = 0; apply(pr); } // 上げるのはゆっくり（行ったり来たりしない）
   };
 }
 
@@ -59,19 +59,27 @@ export function adaptiveResolution({ min = 0.6, max = 1.5, start = 1, apply }) {
  * ups を何回か動かして位置が変わらなかった、不透明な面と線だけを、材質ごとに1つにまとめる。
  * exclude の物（とその子）は触らない（タッチの的、動く生きものなど）
  */
-export async function mergeStatic(scene, { exclude = [], ups = [] } = {}) {
-  const { mergeGeometries } = await import('three/addons/utils/BufferGeometryUtils.js');
-  const skip = new Set();
-  for (const o of exclude) o && o.traverse(c => skip.add(c));
+// ups を何回か動かして、位置が変わる物（動く物）を見つける
+export function findDynamic(scene, ups = []) {
+  const dyn = new Set();
   scene.updateMatrixWorld(true);
   const snap = new Map();
   scene.traverse(o => { if (o.isMesh || o.isLineSegments) snap.set(o, o.matrixWorld.clone()); });
-  for (const t of [0.7, 1.9, 3.3]) { for (const u of ups) { try { u && u(t, 1 / 60); } catch { /* */ } } scene.updateMatrixWorld(true); for (const [o, m] of snap) if (!o.matrixWorld.equals(m)) skip.add(o); }
+  for (const t of [0.7, 1.9, 3.3]) { for (const u of ups) { try { u && u(t, 1 / 60); } catch { /* */ } } scene.updateMatrixWorld(true); for (const [o, m] of snap) if (!o.matrixWorld.equals(m)) dyn.add(o); }
+  return dyn;
+}
+let mergeGeometries;
+export async function mergeStatic(scene, { exclude = [], ups = [], dynamic = null, into = null } = {}) {
+  mergeGeometries ??= (await import('three/addons/utils/BufferGeometryUtils.js')).mergeGeometries;
+  const skip = new Set(dynamic || findDynamic(scene, ups));
+  for (const o of exclude) o && o.traverse(c => skip.add(c));
+  const root = into || scene; root.updateMatrixWorld(true);
+  const toRoot = new THREE.Matrix4().copy(root.matrixWorld).invert(), m4 = new THREE.Matrix4();
   const buckets = new Map(); // 材質 → [geometry...]
   const victims = [];
   const visibleUp = o => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
-  scene.traverse(o => {
-    if (skip.has(o) || !visibleUp(o) || o.isSkinnedMesh || o.isInstancedMesh || o.isSprite || o.isReflector || o.type === 'Reflector') return;
+  root.traverse(o => {
+    if (skip.has(o) || o === root || !visibleUp(o) || o.isSkinnedMesh || o.isInstancedMesh || o.isSprite || o.isReflector || o.type === 'Reflector') return;
     if (o.onBeforeRender !== THREE.Object3D.prototype.onBeforeRender) return;
     const isLine = o.isLineSegments;
     if (!o.isMesh && !isLine) return;
@@ -79,7 +87,7 @@ export async function mergeStatic(scene, { exclude = [], ups = [] } = {}) {
     if (mats.some(m => !m || m.transparent || m.side === THREE.BackSide || (!isLine && !m.isMeshStandardMaterial && !m.isMeshBasicMaterial && !m.isMeshLambertMaterial))) return;
     let g = o.geometry; if (!g?.attributes?.position) return;
     g = g.index ? g.toNonIndexed() : g.clone();
-    g.applyMatrix4(o.matrixWorld);
+    g.applyMatrix4(m4.multiplyMatrices(toRoot, o.matrixWorld));
     const keep = isLine ? ['position'] : ['position', 'normal', 'uv'];
     for (const k of Object.keys(g.attributes)) if (!keep.includes(k)) g.deleteAttribute(k);
     if (!isLine) { if (!g.attributes.normal) g.computeVertexNormals(); if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); }
@@ -100,9 +108,15 @@ export async function mergeStatic(scene, { exclude = [], ups = [] } = {}) {
     for (let i = 0; i < geos.length; i += 2000) { // 大きくなりすぎないように区切る
       const merged = mergeGeometries(geos.slice(i, i + 2000), false); if (!merged) continue;
       const obj = isLine ? new THREE.LineSegments(merged, m) : new THREE.Mesh(merged, m);
-      if (isLine) obj.layers.set(DETAIL_LAYER);
-      obj.matrixAutoUpdate = false; scene.add(obj); after++;
+      if (isLine) obj.layers.set(DETAIL_LAYER); else obj.layers.enable(OCCLUDER_LAYER);
+      obj.matrixAutoUpdate = false; obj.updateMatrix(); root.add(obj); after++;
     }
   }
   return { before, after };
 }
+
+export const OCCLUDER_LAYER = 3; // まとめた建物：細かく描く物の手前にあるかの判定に使う
+export const SHARP_LAYER = 2; // 看板・猫・クジラ：いつも細かく描く
+export function markSharp(obj) { obj.traverse(o => o.layers.enable(SHARP_LAYER)); }
+// 灯りは細かく描く段でも効くように
+export function lightsForSharp(scene) { scene.traverse(o => { if (o.isLight) o.layers.enable(SHARP_LAYER); }); }

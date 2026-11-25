@@ -39,16 +39,25 @@ function fallback() {
 }
 
 async function startCity(works) {
+  const Q0 = new URLSearchParams(location.search);
+  // 本が開いて街ができる場面は、録画を流す（重い場面をその場で描かない）。そのあいだに本物の街を用意する
+  const { createFilm, filmUrl } = await import('./film.js');
+  const film = createFilm($('film'));
+  const useFilm = !Q0.has('manual') && !Q0.has('record') && !Q0.has('live') && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const introFilm = useFilm ? film.play(filmUrl('intro'), { onStart: () => { $('loading').classList.add('done'); $('skip').hidden = false; } }) : Promise.resolve(false);
+  $('film').addEventListener('click', () => film.skip());
+  $('skip').addEventListener('click', () => film.skip());
   const { createWorld } = await import('./scene/world.js');
   // 看板の文字は一度だけ描くので、先にフォントを待つ（最大2.5秒）
   try { await Promise.race([Promise.all(['400 40px "Dela Gothic One"', '400 40px "DotGothic16"', '400 40px "Righteous"'].map(f => document.fonts.load(f))), new Promise(ok => setTimeout(ok, 2500))]); } catch { /* 代わりの字で描く */ }
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const coarse = matchMedia('(pointer: coarse)').matches;
   const strong = (navigator.hardwareConcurrency || 4) >= 6 && !coarse;
-  const manual = new URLSearchParams(location.search).has('manual');
+  const Q = new URLSearchParams(location.search), manual = Q.has('manual') || Q.has('record');
   // タワーの画面（横長 16:9）
   const screen = document.createElement('canvas'); screen.width = 640; screen.height = 360;
-  const world = await createWorld($('app'), { works, screenCanvas: screen, tier: strong ? 'high' : 'low', reducedMotion, manual });
+  const world = await createWorld($('app'), { works, screenCanvas: screen, tier: strong ? 'high' : 'low', reducedMotion, manual, record: Q.has('record'), startInAlley: useFilm });
+  if (useFilm) world.setPaused(true);
   const billboard = createBillboard(works);
   const selection = createSelection(billboard, { navigate: url => { location.href = url; } });
   const hub = { world, billboard, selection, works, screen, ready: false, selected: null, videoReady: false };
@@ -127,6 +136,7 @@ async function startCity(works) {
   });
   el.addEventListener('pointerup', e => {
     if (!world.isTap(e.clientX, e.clientY)) return; // ドラッグは選択にしない
+    if (film.playing) { film.skip(); return; }
     if (!world.inAlley || world.busy) { skipIntro(); return; } // 本が開いている・めくっている途中のタップは早送り
     const hit = world.pick(e.clientX, e.clientY);
     if (hit?.cat) { world.cat.tap(world.time); return; }
@@ -145,9 +155,15 @@ async function startCity(works) {
     play.disabled = st.mode === 'wip';
   }
   play.addEventListener('click', () => selection.tap({ billboard: true }));
-  function skipIntro() { world.skip(); }
+  function skipIntro() { if (film.playing) film.skip(); else world.skip(); }
   skip.addEventListener('click', skipIntro);
 
+  // 録画が終わる（または飛ばす）のを待って、本物の街を見せる。録画が流せなかったら、その場で本を開く
+  if (useFilm) {
+    const played = await introFilm;
+    world.setPaused(false);
+    if (played) await film.hide(); else world.replayIntro();
+  }
   $('loading').classList.add('done');
   setTimeout(() => $('loading').remove(), 700);
   if (!world.inAlley) skip.hidden = false;
@@ -162,7 +178,13 @@ async function startCity(works) {
     billboard.clear(); selection.hover(null);
     $('prev').disabled = $('next').disabled = true;
     hint.hidden = true; skip.hidden = false; // めくりの途中も飛ばせる
-    try { await world.turnTo(k); } catch (e) { console.warn(e); }
+    try {
+      // 録画したページめくりを流し、そのあいだに次のページを用意する。流せなければその場でめくる
+      const ready = world.prepare(k);
+      const played = useFilm && await film.play(filmUrl(`turn-${world.page}-${k}`), { onStart: () => world.setPaused(true) });
+      if (played) { await ready; await world.jumpTo(k); world.setPaused(false); await film.hide(); }
+      else { world.setPaused(false); await world.turnTo(k); }
+    } catch (e) { console.warn(e); world.setPaused(false); }
     skip.hidden = true; hint.hidden = false;
     showPage(world.page);
   }

@@ -89,3 +89,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* 本が開くあいだの早送り */
 .skip { position: fixed; right: calc(var(--safe-r, 0px) + 16px); bottom: calc(var(--safe-b) + 20px); z-index: 6; opacity: .8; }
 .turn[hidden] { display: none; }
+/* 録画した場面：街の上に重ねて流し、終わったらふわっと消える */
+.film { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; background: transparent; z-index: 3; opacity: 0; pointer-events: none; transition: opacity .45s; }
+.film.on { opacity: 1; pointer-events: auto; }

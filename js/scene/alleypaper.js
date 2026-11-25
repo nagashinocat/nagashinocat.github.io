@@ -75,7 +75,7 @@ for (const side of [-1, 1]) {
       if (occ.some(o => Math.abs(o.z - zz) < o.hz + half + 0.004 && Math.abs(o.y - y) < o.hy + size[1] / 2 + 0.004)) { deck.unshift([kind, text]); continue; }
       occ.push({ z: zz, y, hz: half, hy: size[1] / 2 });
       k++;
-      const sg = make();
+      const sg = make(); sg.group.userData.sharp = true;
       if (sg.update) ups.push(sg.update);
       if (flat) {
         sg.group.position.set(side * (ALLEY / 2 - 0.003), y, zz);
@@ -98,6 +98,7 @@ for (const side of [-1, 1]) {
       const text = kind === 'marquee' ? 'nagashinocat' : r.pick(['猫', 'ながしの猫']);
       const size = kind === 'marquee' ? [0.14, 0.05] : kind === 'bulbvert' ? [0.04, 0.03 + [...text].length * 0.03] : [0.16, 0.05];
       const sg = kind === 'bulbvert' ? makeSign2(kind, text, r.pick(['#ffb21f', '#ff4fa3']), size, { rng: () => r.next() }) : makeSign(kind, text, r.pick(['#ff4fa3', '#4fd8ff', '#ffb21f']), size, { vertical: size[1] > size[0], rng: () => r.next() });
+      sg.group.userData.sharp = true;
       if (sg.update) ups.push(sg.update);
       const zc = z - d / 2, x = ALLEY / 2 + 0.06, top = h + 0.02 + size[1] / 2;
       sg.group.position.set(x, top, zc); sg.group.rotation.y = -0.55; scene.add(sg.group);
