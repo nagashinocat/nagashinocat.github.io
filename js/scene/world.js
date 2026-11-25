@@ -287,18 +287,21 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     c.position.set(...pos).addScaledVector(fwd, push); c.lookAt(...look); c.fov = aspect < 1 ? Math.min(95, fov * (1 + (1 - aspect) * 0.55)) : fov; c.aspect = aspect; c.updateProjectionMatrix();
   };
   // ---- ページ移動：街から本の見開きへ引いて、中身が沈み、ページがめくれ、次の街が立ち上がって、また入っていく ----
-  const TT = 8.4; // めくりの全体の長さ（秒）
+  // 録画で流すので、たたむ・立ち上がるは最初のアニメーションと同じゆっくりさで
+  const TT = 20.2; // めくりの全体の長さ（秒）
   const TK = [
     [0, [0, 0.06, 0.3], [0, 0.3, -0.72], 60],
-    [1.6, [0, 0.14, 1.12], [0, 0.34, -0.5], 56],
-    [3.0, [0.3, 1.5, 2.1], [0, 0.1, 0], 44],
-    [5.6, [0.3, 1.5, 2.1], [0, 0.1, 0], 44],
-    [7.2, [0, 0.14, 1.12], [0, 0.34, -0.5], 56],
-    [8.4, [0, 0.06, 0.3], [0, 0.3, -0.72], 60],
+    [1.8, [0, 0.14, 1.12], [0, 0.34, -0.5], 56],
+    [4.6, [0.3, 1.5, 2.1], [0, 0.1, 0], 44],
+    [11.4, [0.3, 1.5, 2.1], [0, 0.1, 0], 44],
+    [17.8, [0, 0.14, 1.12], [0, 0.34, -0.5], 56],
+    [20.2, [0, 0.06, 0.3], [0, 0.3, -0.72], 60],
   ];
+  const T_FOLD = [2.2, 6.2], T_GBACK = [6.0, 8.2], T_FLIP = [8.4, 9.8], T_GOUT = [10.0, 12.8], T_POP = [12.2, 18.0];
+  const litOf = tp => smooth01((tp - 0.2) / 1.6); // 建物が出はじめたら、すぐ灯りがともる
   // 見開きの中身：路地の街（最初のジオラマ）と、工場街・空き地の小さなジオラマ
   const groundTex0 = D.ground.top.material.map;
-  const content = { games: { set: v => { setPop(v * 5.8); for (const L of dLights) L.intensity = L.userData.base * smooth01(v * 1.5 - 0.3); }, ground: groundTex0, ave: true, whale: true } };
+  const content = { games: { set: v => { setPop(v * 5.8); for (const L of dLights) L.intensity = L.userData.base * litOf(v * 5.8); }, ground: groundTex0, ave: true, whale: true } };
   function contentOf(kind) {
     if (content[kind]) return content[kind];
     const M = kind === 'tools' ? buildFactoryMini() : buildLotMini();
@@ -310,10 +313,10 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     const del = new Map(M.items.map(o => { const p = o.getWorldPosition(new THREE.Vector3()); return [o, Math.max(0, (p.z + 0.9) * 0.9 + Math.abs(p.x) * 0.6)]; }));
     const dm = Math.max(...del.values(), 1e-3);
     const set = v => { // v: 0 しまった → 1 立ちきった
-      const t = v * 2.6;
-      for (const o of M.items) { const d = 1.6 * (del.get(o) / dm) ** 0.5, x = clamp01((t - d) / (1.0 - 0.5 * d / 1.6)), k = x <= 0 ? 1e-4 : grow(x), s0 = pb.get(o); o.scale.set(s0.x, s0.y * k, s0.z); o.visible = x > 0; }
+      const t = v * 5.8; // 最初のアニメーションと同じ並び方・速さ
+      for (const o of M.items) { const d = POP_SPAN * (del.get(o) / dm) ** 0.5, x = clamp01((t - d) / durOf(d)), k = x <= 0 ? 1e-4 : grow(x), s0 = pb.get(o); o.scale.set(s0.x, s0.y * k, s0.z); o.visible = x > 0; }
       M.group.visible = v > 0;
-      for (const L of lights) L.intensity = L.userData.base * smooth01(v * 1.5 - 0.3);
+      for (const L of lights) L.intensity = L.userData.base * litOf(t);
     };
     set(0);
     return (content[kind] = { set, ground: M.groundTex, ave: false, whale: false, ups: M.ups });
@@ -339,18 +342,19 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
   function bookTurnFrame(tt, from, to, dir) {
     const aspect = W / H;
     camAt(cam, tt, TK, aspect);
-    const flip = clamp01((tt - 2.6) / 1.4), swapped = flip >= 0.5;
+    const span = (a, x) => clamp01((tt - a[0]) / (a[1] - a[0]));
+    const flip = span(T_FLIP), swapped = flip >= 0.5;
     const A0 = contentOf(from), B0 = contentOf(to);
-    // 古い中身が沈み、地面が巻き戻る → めくる → 新しい地面が転がり、中身が立ち上がる
-    if (!swapped) { A0.set(1 - smooth01((tt - 1.2) / 1.2)); B0.set(0); setGround(1 - smooth01((tt - 1.3) / 1.2)); }
-    else { A0.set(0); B0.set(smooth01((tt - 4.4) / 2.8)); setGround(smooth01((tt - 4.0) / 1.8)); }
+    // 古い中身がゆっくりたたまれ、地面が巻き戻る → めくる → 新しい地面が転がり、中身がゆっくり立ち上がる
+    if (!swapped) { A0.set(1 - span(T_FOLD)); B0.set(0); setGround(1 - smooth01(span(T_GBACK))); }
+    else { A0.set(0); B0.set(span(T_POP)); setGround(smooth01(span(T_GOUT))); }
     const cur = swapped ? B0 : A0;
     D.ground.top.material.map = cur.ground; D.ground.ave.visible = cur.ave;
     for (const o of Object.values(content)) if (o.ups && o.group?.visible !== false) for (const u of o.ups) u(time);
-    whaleD.group.visible = cur.whale && (swapped ? tt > 6.2 : tt < 1.6);
+    whaleD.group.visible = cur.whale && (swapped ? tt > 16.5 : tt < 2.4);
     setSheet(flip, dir);
     // 本を見ているあいだは、机のスタンドをまた灯して霧を薄く（本と街がよく見えるように）
-    const bell = smooth01((tt - 1.2) / 1.2) * (1 - smooth01((tt - 5.6) / 1.4));
+    const bell = smooth01((tt - 2.4) / 1.6) * (1 - smooth01((tt - 11.0) / 1.6));
     lamp.intensity = 6 * bell;
     if (D.scene.fog) D.scene.fog.density = fog0 * (1 - 0.65 * bell);
     for (const u of D.ups) u && u(time, 1 / 60);
@@ -381,7 +385,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
       setGround(smooth01((t - 3.4) / 2.8)); // ゆっくり押し出して、ころころ転がり、最後はそっと止まる
       setPop(t - 4.2);
       // 街の灯りは、建物が立ち上がるのに合わせて灯る
-      const lit = smooth01((t - 4.6) / 3.5); for (const L of dLights) L.intensity = L.userData.base * lit;
+      const lit = litOf(t - 4.2); for (const L of dLights) L.intensity = L.userData.base * lit;
       if (t >= T_ALLEY) introDone = true;
     }
     lamp.intensity = 9 * (1 - ease(clamp01((t - 4.8) / 3.2)));
@@ -391,6 +395,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
     if (k < 1) { camAt(cam, Math.min(t, K.at(-1)[0]), K, aspect); for (const u of D.ups) u && u(t, dt); whaleD.update(t); const wv = smooth01((t - 8.0) / 1.8); whaleD.group.visible = wv > 0; whaleD.group.scale.setScalar(Math.max(1e-3, wv)); }
     if (k > 0) {
       camAt(camA, t - T_X, KA, aspect);
+      if (aspect < 1) camA.translateZ((1 - aspect) * 0.24); // 縦長の画面では少し下がって、手前の看板も入れる
       // 着いてからはドラッグで少し見回せる
       const lw = smooth01((t - T_ALLEY + 0.5) / 0.8);
       look.yaw += (look.tyaw - look.yaw) * Math.min(1, dt * 6); look.pitch += (look.tpitch - look.pitch) * Math.min(1, dt * 6);
@@ -409,7 +414,7 @@ export async function createWorld(container, { works, screenCanvas, tier = 'high
       const tt = turning.skip ? TT : Math.min(TT, t - turning.t0);
       bookTurnFrame(tt, turning.from, turning.to, turning.dir);
       renderer.toneMappingExposure = 0.8;
-      const kIn = smooth01(tt / 1.0), kOut = smooth01((tt - 7.6) / 0.8);
+      const kIn = smooth01(tt / 1.0), kOut = smooth01((tt - (TT - 0.8)) / 0.8);
       if (kIn < 1) { const a = drawPage(turning.from, 0); compD.render(); out(a, compD, kIn); }
       else if (kOut > 0) { compD.render(); const b = drawPage(turning.to, 0); out(compD, b, kOut); }
       else { compD.render(); out(compD, compD, 0); }

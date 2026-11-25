@@ -110,7 +110,7 @@ export function planDistrict(kind, works, seed) {
 
 // ---- 紙の路地：作品ごとのスタンド看板の置き場所 ----
 // 手前（カメラのすぐ先）から奥へ、左右交互に1つずつ。数が多いときは間を詰めて、タワーの手前に収める
-export function standSlots(n, { front = 0.34, back = -0.7 } = {}) {
+export function standSlots(n, { front = 0.48, back = -0.7 } = {}) { // 手前の1軒目から
   const rows = Math.ceil(n / 2);
   const step = n > 1 ? Math.min(0.13, (front - back) / (rows - 0.55)) : 0;
   return Array.from({ length: n }, (_, i) => {

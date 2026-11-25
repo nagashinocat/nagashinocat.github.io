@@ -7,7 +7,7 @@ test('スタンド看板：手前から奥へ、左右交互に1つずつ', () =
   assert.equal(s.length, 5);
   assert.deepEqual(s.map(x => x.side), [-1, 1, -1, 1, -1]);
   for (let i = 1; i < s.length; i++) assert.ok(s[i].z < s[i - 1].z, '奥へ進む');
-  assert.ok(s[0].z <= 0.4 && s[0].z >= 0.25, '最初はカメラの少し先');
+  assert.ok(s[0].z <= 0.52 && s[0].z >= 0.4, '最初はカメラのすぐ先の1軒目');
 });
 test('スタンド看板：数が多くても路地の奥（タワーの手前）までに収まる', () => {
   const s = standSlots(20);
