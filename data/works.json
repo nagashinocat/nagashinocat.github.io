@@ -57,6 +57,16 @@
     "isNew": true
   },
   {
+    "id": "nyankoro-mori",
+    "title": "にゃんころ盛り",
+    "district": "games",
+    "url": "/nyankoro-mori/",
+    "blurb": "にゃんころもちを投げて、お皿や重箱にきれいに盛る60秒ゲーム。形がそろうと役カードがもらえる。",
+    "color": "#ffb3c8",
+    "shot": "assets/shots/nyankoro-mori.jpg",
+    "isNew": true
+  },
+  {
     "id": "nankai-sim",
     "title": "南海トラフ地震シミュレーター",
     "district": "tools",
